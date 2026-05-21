@@ -55,14 +55,14 @@ Not scale of knowledge — quality of thinking.
 #### Scalability Primitives
 - [ ] Horizontal scaling + statelessness — why statelessness is a prerequisite to scaling out
 - [ ] Load balancing — algorithms (round robin, least conn, IP hash), L4 vs L7, sticky sessions
-- [ ] Caching — where to cache (client, CDN, app layer, DB layer), eviction (LRU/LFU/TTL), cache invalidation strategies
+- [x] Caching — where to cache, eviction (LRU/LFU/TTL), cache invalidation strategies ✅ Session 1
 - [ ] CDN — how it works, when it helps, when it doesn't
-- [ ] Database replication — primary-replica, read replicas, replication lag and its consequences
-- [ ] Database sharding — strategies (range, hash, directory), hot spots, the cross-shard query problem
+- [x] Database replication — primary-replica, read replicas, replication lag ✅ Session 1
+- [x] Database sharding — strategies (hash, range), hot spots, cross-shard queries ✅ Session 1
 
 #### Storage
-- [ ] SQL vs NoSQL — not "SQL is structured." *When* does eventual consistency become acceptable? When does ACID matter?
-- [ ] Indexing — B-tree intuition, how a DB uses indexes, composite indexes, index trade-offs on writes
+- [ ] SQL vs NoSQL — when does eventual consistency become acceptable? When does ACID matter?
+- [ ] Indexing — B-tree intuition, composite indexes, index trade-offs on writes
 - [ ] Write-ahead logging — what it is, why it enables durability
 - [ ] Object vs block vs file storage — S3 vs EBS vs EFS, when to use what
 
@@ -85,59 +85,76 @@ Not scale of knowledge — quality of thinking.
 
 - [ ] Consistent hashing — what problem it solves (distributed caches, avoiding reshuffling)
 - [ ] Distributed locking — when you need it, how it's done (Redis SETNX / Redlock)
-- [ ] Two-phase commit vs SAGA — distributed transactions, why 2PC is dangerous, SAGA choreography vs orchestration
-- [ ] Event sourcing + CQRS — what they solve, not just what they are
-- [ ] Search systems — how Elasticsearch works, inverted index, why you can't just use LIKE queries
-- [ ] Time-series data — why regular SQL struggles, what you'd use (InfluxDB, TimescaleDB)
-- [ ] Data pipelines — batch vs stream (Spark vs Flink conceptually), Lambda vs Kappa architecture
+- [ ] Two-phase commit vs SAGA — distributed transactions
+- [ ] Event sourcing + CQRS — what they solve
+- [ ] Search systems — inverted index, why LIKE queries don't scale
+- [ ] Time-series data — why regular SQL struggles
+- [ ] Data pipelines — batch vs stream, Lambda vs Kappa architecture
 
 ---
 
-### 🟢 Tier 3 — Shows depth, good to have
+### 🟢 Tier 3 — Shows depth
 
-- [ ] Consensus — Raft/Paxos at an intuitive level (leader election, quorum)
-- [ ] Vector clocks — how distributed systems track causality
-- [ ] Bloom filters — probabilistic membership, false positives, use cases
-- [ ] LSM trees vs B-trees — storage engine internals, write-optimized vs read-optimized
-- [ ] Column-oriented databases — why they're fast for analytics (Redshift, BigQuery)
-
----
-
-## Case Studies (Do in Order)
-
-| # | System | Core Concepts Practiced | Status | Date | Notes |
-|---|--------|------------------------|--------|------|-------|
-| 1 | URL Shortener | DB design, hashing, redirect at scale | 🔴 | | |
-| 2 | Rate Limiter | Distributed state, token bucket, Redis | 🔴 | | |
-| 3 | Notification System | Async queues, fan-out, push vs pull | 🔴 | | |
-| 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs | 🔴 | | |
-| 5 | Twitter/Instagram Feed | Fan-out on write vs read, the core social trade-off | 🔴 | | |
-| 6 | Chat System (WhatsApp) | WebSockets, message ordering, delivery guarantees | 🔴 | | |
-| 7 | Typeahead / Autocomplete | Trie, caching hot queries | 🔴 | | |
-| 8 | Distributed Cache (Redis) | Consistent hashing, replication | 🔴 | | |
-| 9 | Job Scheduler | Distributed locking, at-least-once delivery | 🔴 | | |
-| 10 | Learning Management System | Ed-tech specific, IL-relevant | 🔴 | | |
+- [ ] Consensus — Raft/Paxos intuition (leader election, quorum)
+- [ ] Vector clocks — causality in distributed systems
+- [ ] Bloom filters — probabilistic membership, use cases
+- [ ] LSM trees vs B-trees — write-optimized vs read-optimized
+- [ ] Column-oriented databases — why fast for analytics
 
 ---
 
-## What Great Looks Like in the Room
+## Case Studies
 
-- **Back-of-envelope without hesitation.** "10M DAU × 5 req/day = ~580 QPS. At 1KB/req = 50GB/day." Practice until automatic.
-- **Naming trade-offs explicitly.** Not just "I'd use Cassandra" — "I'm trading consistency for write throughput here, which is acceptable because reads can tolerate stale data."
-- **Scope control.** "I'll focus on the write path first, come back to reads." Shows maturity.
-- **Failure thinking.** After designing: what happens when this component goes down? At 10x load? Great candidates do this unprompted.
+| # | System | Core Concepts Practiced | Status | Notes |
+|---|--------|------------------------|--------|-------|
+| 1 | URL Shortener | Base62, cache-aside, read replicas, sharding | ✅ Done | See session log below |
+| 2 | Rate Limiter | Distributed state, token bucket, Redis | 🔴 | Next |
+| 3 | Notification System | Async queues, fan-out, push vs pull | 🔴 | |
+| 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs | 🔴 | |
+| 5 | Twitter/Instagram Feed | Fan-out on write vs read | 🔴 | |
+| 6 | Chat System (WhatsApp) | WebSockets, message ordering | 🔴 | |
+| 7 | Typeahead / Autocomplete | Trie, caching hot queries | 🔴 | |
+| 8 | Distributed Cache (Redis) | Consistent hashing, replication | 🔴 | |
+| 9 | Job Scheduler | Distributed locking, at-least-once delivery | 🔴 | |
+| 10 | Learning Management System | Ed-tech specific, IL-relevant | 🔴 | |
 
 ---
 
 ## Session Log
 
-| Session | Topic | What clicked | What to revisit |
-|---------|-------|-------------|-----------------|
-| — | — | — | — |
+### Session 1 — Caching + URL Shortener
+**Concepts covered:** Caching (what, why, where), eviction (LRU), invalidation strategies (cache-aside, write-through, write-behind), read replicas, sharding, Base62 encoding, horizontal vs vertical scaling
+
+**What was strong:**
+- Problem-first thinking — always starts with why
+- Core caching insight landed cleanly
+- Cache placement in URL shortener — correct and unprompted
+- Read replica vs shard distinction — nailed the one-liner
+
+**What to keep sharpening:**
+- Name precision: cache-aside (not cache-head/cache-ahead), vertical vs horizontal
+- Always clarify requirements before designing — skipped this step today
+- State trade-offs explicitly: not just *what* you'd use but *why the trade-off is acceptable here*
+
+**Key one-liners to remember:**
+- Replica = same data copied across multiple DBs
+- Shard = data split across multiple DBs
+- Cache-aside = check cache → miss → fetch DB → populate cache → return
+- Base62 of auto-increment ID = guaranteed unique, O(1) decode, no collision handling needed
+
+---
+
+## What Great Looks Like in the Room
+
+- **Back-of-envelope without hesitation.** "10M DAU × 5 req/day = ~580 QPS."
+- **Naming trade-offs explicitly.** Not just "I'd use Cassandra" — "I'm trading consistency for write throughput here, which is acceptable because..."
+- **Scope control.** "I'll focus on the write path first, come back to reads."
+- **Failure thinking.** After designing: what happens when this component goes down? At 10x load?
 
 ---
 
 ## Running Notes & Patterns
-> Add reusable insight here as you go through cases
 
--
+- URL shortener mappings are immutable → cache TTL can be very long, staleness is a non-issue
+- Read-heavy systems → replicas first, sharding only when writes become the bottleneck
+- Don't over-engineer: know when NOT to add complexity
