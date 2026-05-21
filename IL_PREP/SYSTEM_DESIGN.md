@@ -27,6 +27,7 @@ Not scale of knowledge — quality of thinking.
    - Functional: what does the system do?
    - Non-functional: scale, latency, availability, consistency needs?
    - Who are the users? Read-heavy or write-heavy?
+   - What happens when limit/failure occurs?
 
 2. ESTIMATE SCALE (back of envelope)
    - DAU → QPS → storage → bandwidth
@@ -44,6 +45,7 @@ Not scale of knowledge — quality of thinking.
 5. TRADE-OFFS
    - What did you sacrifice? Why is that acceptable here?
    - How would this evolve at 10x scale?
+   - What happens when this component fails?
 ```
 
 ---
@@ -74,7 +76,7 @@ Not scale of knowledge — quality of thinking.
 
 #### Reliability
 - [ ] CAP theorem — applying it, not just reciting it
-- [ ] Rate limiting — token bucket vs leaky bucket, distributed rate limiting
+- [x] Rate limiting — fixed window, sliding window, token bucket, distributed rate limiting ✅ Session 2
 - [ ] Circuit breaker — what failure it prevents, how it works
 - [ ] Idempotency — why it matters in distributed systems, how to implement
 - [ ] Graceful degradation — designing for partial failure
@@ -107,9 +109,9 @@ Not scale of knowledge — quality of thinking.
 
 | # | System | Core Concepts Practiced | Status | Notes |
 |---|--------|------------------------|--------|-------|
-| 1 | URL Shortener | Base62, cache-aside, read replicas, sharding | ✅ Done | See session log below |
-| 2 | Rate Limiter | Distributed state, token bucket, Redis | 🔴 | Next |
-| 3 | Notification System | Async queues, fan-out, push vs pull | 🔴 | |
+| 1 | URL Shortener | Base62, cache-aside, read replicas, sharding | ✅ Done | |
+| 2 | Rate Limiter | Fixed/sliding window, Redis central state, distributed problem | ✅ Done | |
+| 3 | Notification System | Async queues, fan-out, push vs pull | 🔴 | Next |
 | 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs | 🔴 | |
 | 5 | Twitter/Instagram Feed | Fan-out on write vs read | 🔴 | |
 | 6 | Chat System (WhatsApp) | WebSockets, message ordering | 🔴 | |
@@ -132,24 +134,51 @@ Not scale of knowledge — quality of thinking.
 - Read replica vs shard distinction — nailed the one-liner
 
 **What to keep sharpening:**
-- Name precision: cache-aside (not cache-head/cache-ahead), vertical vs horizontal
-- Always clarify requirements before designing — skipped this step today
-- State trade-offs explicitly: not just *what* you'd use but *why the trade-off is acceptable here*
+- Name precision: cache-aside, vertical vs horizontal
+- Always clarify requirements before designing
+- State trade-offs explicitly
 
-**Key one-liners to remember:**
+**Key one-liners:**
 - Replica = same data copied across multiple DBs
 - Shard = data split across multiple DBs
 - Cache-aside = check cache → miss → fetch DB → populate cache → return
-- Base62 of auto-increment ID = guaranteed unique, O(1) decode, no collision handling needed
+- Base62 of auto-increment ID = guaranteed unique, O(1) decode, no collisions
+
+---
+
+### Session 2 — Rate Limiter
+**Concepts covered:** Fixed window counter, sliding window timestamps, memory estimation, distributed state problem, centralizing state in Redis
+
+**What was strong:**
+- Asked requirements questions upfront without being prompted — big improvement
+- Correctly identified Redis as the right store over DB
+- Understood the fixed window boundary exploit clearly
+- Memory estimation — right approach, clean math
+- Grasped the distributed problem quickly once stated
+
+**What to keep sharpening:**
+- After designing a component, always ask: *"what happens when this fails?"* — didn't do this for Redis
+- Trade-off articulation — be more deliberate: decision → mechanism → cost → when acceptable
+
+**Key one-liners:**
+- Fixed window = memory efficient, has boundary exploit (198 requests in 2 seconds)
+- Sliding window = accurate, 50x more memory
+- Distributed state solution = centralize in Redis, keep servers stateless
+- In distributed systems: simplest solution to shared state is centralizing it
+
+**Size reference (memorize):**
+- Integer/timestamp = 8 bytes
+- Short string = 100 bytes
+- Default document = 1KB
 
 ---
 
 ## What Great Looks Like in the Room
 
-- **Back-of-envelope without hesitation.** "10M DAU × 5 req/day = ~580 QPS."
-- **Naming trade-offs explicitly.** Not just "I'd use Cassandra" — "I'm trading consistency for write throughput here, which is acceptable because..."
-- **Scope control.** "I'll focus on the write path first, come back to reads."
-- **Failure thinking.** After designing: what happens when this component goes down? At 10x load?
+- **Back-of-envelope without hesitation.** "10M users × 100 timestamps × 8 bytes = 8GB"
+- **Naming trade-offs explicitly.** "I'm trading memory for accuracy here, acceptable if budget allows"
+- **Scope control.** "I'll focus on the write path first, come back to reads"
+- **Failure thinking.** After designing: what happens when this component goes down?
 
 ---
 
@@ -158,3 +187,5 @@ Not scale of knowledge — quality of thinking.
 - URL shortener mappings are immutable → cache TTL can be very long, staleness is a non-issue
 - Read-heavy systems → replicas first, sharding only when writes become the bottleneck
 - Don't over-engineer: know when NOT to add complexity
+- Stateless servers + centralized state = the foundation of scalable distributed systems
+- Rate limiter Redis failure = either block all or allow all — need fallback strategy (allow-on-failure is common)
