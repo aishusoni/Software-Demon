@@ -18,9 +18,9 @@
    - Timestamp/ID/counter = 8 bytes
    - Short string = 100 bytes, Document = 1KB
 
-3. High level design — boxes first
+3. High level design — BOXES FIRST
    - Client → LB → Service → Cache → DB
-   - Happy path only, don't over-engineer early
+   - Finish the full diagram before zooming into any component
 
 4. Deep dive — find the bottleneck
    - Where does it break at 10x load?
@@ -38,85 +38,70 @@
 
 ## Caching
 
-**What it is:** Faster intermediate store between your app and DB. Trades staleness for speed.
+**What it is:** Faster intermediate store. Trades staleness for speed.
 
 **Where it sits:**
 ```
 User → Browser cache → CDN → App cache (Redis) → DB → DB buffer pool
 ```
 
-**Eviction policies:**
-- LRU — kick out least recently used (default answer)
-- LFU — kick out least frequently used
-- TTL — expire after fixed time
+**Eviction:** LRU (default), LFU, TTL
 
 **Invalidation strategies:**
 
-| Strategy | Write goes to | On read miss | Risk |
-|----------|--------------|--------------|------|
-| Cache-aside | DB, delete cache | DB → repopulate | Brief staleness |
-| Write-through | DB + cache | Always hits cache | Slow writes |
-| Write-behind | Cache first, DB async | Always hits cache | Data loss |
+| Strategy | Write goes to | Risk |
+|----------|--------------|------|
+| Cache-aside | DB, delete cache | Brief staleness |
+| Write-through | DB + cache | Slow writes |
+| Write-behind | Cache first, DB async | Data loss |
 
-**When staleness doesn't matter:** Immutable data (URL mappings, static content) → cache aggressively, long TTL fine.
-
-**One-liner:** Cache = working memory. DB = long term memory.
+**When aggressive caching is safe:** Immutable data (URL mappings) — long TTL fine, staleness impossible.
 
 ---
 
 ## Database Scaling
 
-**Read replicas:**
-- Writes → primary only
-- Reads → distributed across replicas
-- Replication lag = tiny window of staleness (~50-100ms)
-- Use when: read-heavy system, DB read load is bottleneck
-
-**Sharding:**
-- Split data across multiple DBs (not copies — splits)
-- Hash sharding: hash(key) % n = which shard
-- Use when: write load is the bottleneck
-- Cost: cross-shard queries become complex
-
-**One-liner:**
-- Replica = same data, multiple DBs (solves read scale)
-- Shard = split data, multiple DBs (solves write scale)
-
-**Vertical vs horizontal:**
-- Vertical = bigger machine (more CPU/RAM)
-- Horizontal = more machines in parallel
+- **Read replicas** = same data, multiple DBs → solves read scale
+- **Sharding** = split data, multiple DBs → solves write scale
+- **Vertical** = bigger machine. **Horizontal** = more machines.
+- Replication lag = ~50-100ms, usually acceptable
 
 ---
 
 ## Rate Limiting
 
-**What it is:** Enforce max N requests per user per time window. Return HTTP 429 on breach.
+**Fixed window:** 1 counter + 1 timestamp per user. Memory efficient. Boundary exploit risk.
 
-**Fixed window:**
+**Sliding window:** List of timestamps per user. Accurate. 50x more memory.
+
+**Distributed:** All servers → one central Redis. Stateless servers = any server handles any request.
+
+**Redis failure:** Fail open (allow all) = most common. Fail closed (reject all) = security critical.
+
+---
+
+## Message Queues
+
+**Point-to-point:** Each message → one consumer. Good for distributing work.
+
+**Pub/Sub:** Each message → all subscriber groups. Good for one event, multiple systems.
+
+**Kafka specifics:**
+- Topic split into partitions → each partition assigned to one consumer in a group
+- More partitions = higher parallelism ceiling
+- Messages retained after consumption (unlike Redis queue)
+- Multiple consumer groups read same topic independently
+
+**Celery + Redis:**
 ```
-Reset counter every 60 seconds
-Problem: 99 req at t=59s + 99 req at t=61s = 198 req in 2 seconds ❌
-Memory: tiny (1 counter + 1 timestamp per user)
+Celery Beat → checks periodic tasks table → pushes to Redis (the queue)
+Celery Worker → pops from Redis → executes task
+Redis IS the Celery queue (Redis List under the hood)
 ```
 
-**Sliding window:**
-```
-Store list of timestamps, look back exactly 60s from now
-Accurate — no boundary exploit ✅
-Memory: 10M users × 100 timestamps × 8 bytes = 8GB ❌ expensive
-```
-
-**In practice:** Fixed window with Redis is the standard answer. Sliding window if strict accuracy required.
-
-**Distributed problem:**
-- 10 servers, each with local counter = user can make 100 req per server = bypass
-- Solution: all servers share ONE central Redis
-- Stateless servers + centralized state = foundation of distributed systems
-
-**Redis failure:**
-- Fail open = allow all requests (availability > strict limiting) ← most common
-- Fail closed = reject all (security critical systems)
-- Production: Redis Sentinel for automatic failover
+**Kafka vs Celery+Redis:**
+- Simple background jobs → Celery + Redis
+- High throughput, multiple consumers, retention needed → Kafka
 
 ---
 
@@ -124,37 +109,55 @@ Memory: 10M users × 100 timestamps × 8 bytes = 8GB ❌ expensive
 
 **APIs:**
 ```
-POST /urls        { long_url } → { short_url }
-GET  /{code}      → HTTP 302 redirect to long URL
+POST /urls  { long_url } → { short_url }
+GET  /{code}             → HTTP 302 redirect
 ```
 
-**Code generation:**
-- Base62 encode auto-increment DB ID
-- 62 chars (a-z A-Z 0-9), 7 chars = 62⁷ = 3.5 trillion codes
-- Guaranteed unique, O(1) decode, no collision handling needed
-- Don't use MD5 hash — collision risk
+**Code generation:** Base62(auto-increment ID). 62⁷ = 3.5 trillion codes. No collisions.
 
-**Read flow:**
-```
-GET /{code}
-  → Check Redis cache (HIT → 302 redirect ~1ms)
-  → MISS → Base62 decode → DB lookup → populate cache → 302 redirect ~20ms
-```
+**Read flow:** Cache check → HIT: 302 (~1ms) | MISS: DB → populate cache → 302 (~20ms)
 
-**Why aggressive caching works:** Mappings are immutable. Once cached, always valid. Long TTL fine.
-
-**At scale:**
-- Cache absorbs most reads (popular links hit constantly)
-- Read replicas for remaining DB load
-- Sharding only if write load becomes bottleneck (rare for URL shortener)
+**Scale:** Cache first → read replicas → sharding (only if writes bottleneck)
 
 ---
 
-## Distributed Systems — Core Principle
+## Notification System
+
+**Three flows:**
+```
+Direct (1→1):     Event → Queue → Worker → Send
+Fan-out (1→many): Event → Fan-out Service → N messages → Workers → Send
+Aggregation:      N events → Redis counter → Periodic job → 1 batched notification
+```
+
+**Two-stage fan-out:**
+```
+1 event → Fan-out Service → 10M individual messages → 100 workers → 10M sends
+```
+
+**Full diagram:**
+```
+API Layer → Kafka "events"
+      ↓
+Fan-out Service
+  → Kafka "notifications" (direct/fan-out)
+  → Redis counter (aggregation)
+      ↓
+Notification Workers
+  → Push (APNs/FCM) | Email (SendGrid) | SMS (Twilio)
+
+Redis counters → Celery Beat → Batched notifications
+```
+
+**Notification batching:** Many events → Redis counter → one "X people liked your post" message. Instagram/Facebook pattern.
+
+---
+
+## Core Distributed Systems Principle
 
 > **Stateless servers + centralized state = scalable distributed system**
 
-Any server can handle any request because no local state is kept. State lives in Redis / DB. This is why horizontal scaling works.
+Servers remember nothing. State lives in Redis/DB. Any server handles any request. Add servers freely.
 
 ---
 
@@ -164,37 +167,44 @@ Any server can handle any request because no local state is kept. State lives in
 |-------|-------|
 | Redis read latency | ~1ms |
 | DB query latency | ~10-100ms |
+| Replication lag | ~50-100ms |
 | Integer/timestamp | 8 bytes |
 | Short string | 100 bytes |
-| Default document | 1KB |
+| Document | 1KB |
 | 62⁷ combinations | ~3.5 trillion |
-| HTTP 429 | Too Many Requests |
 | HTTP 302 | Temporary Redirect |
+| HTTP 429 | Too Many Requests |
 
 ---
 
-## Trade-off Formula (Use Every Time)
+## Trade-off Formula
 
 > *"I'd use [X] over [Y] because [reason].
 > The cost is [Z], which is acceptable here because [context]."*
 
-Example:
-> *"I'd use fixed window over sliding window because it's 50x more memory efficient.
-> The cost is potential boundary exploits, which is acceptable here because we're not a
-> security-critical system and brief over-limiting is tolerable."*
+---
+
+## Patterns Seen Across Systems
+
+- Fan-out on write = expand at write time, reads stay simple
+- Pub/sub = one event, multiple independent consumers
+- Immutable data = cache aggressively, long TTL
+- Shared state across servers = centralize it (Redis)
+- High read load = replicas. High write load = sharding.
+- Don't over-engineer — know when NOT to add complexity
 
 ---
 
 ## What Separates Good from Great
 
 - Asks requirements before touching the design
+- Draws full diagram before zooming in
 - Names trade-offs explicitly — not just what, but why
-- Does failure thinking unprompted
-- Knows when NOT to add complexity
+- Failure thinking unprompted after every component
 - Back-of-envelope estimation without hesitation
 - Scope control — "I'll come back to that"
 
 ---
 
-*Last updated: Session 2 — Rate Limiter*
-*Next: Notification System (queues, fan-out, push vs pull)*
+*Sessions complete: Caching, URL Shortener, Rate Limiter, Notification System*
+*Next: Pastebin / File Upload (object storage, CDN, presigned URLs)*
