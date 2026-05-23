@@ -24,19 +24,20 @@ Not scale of knowledge — quality of thinking.
 
 ```
 1. CLARIFY REQUIREMENTS (2–3 min)
-   - Functional: what does the system do?
+   - Functional: what does it do?
    - Non-functional: scale, latency, availability, consistency needs?
    - Who are the users? Read-heavy or write-heavy?
-   - What happens when limit/failure occurs?
+   - What happens on failure / limit exceeded?
 
 2. ESTIMATE SCALE (back of envelope)
    - DAU → QPS → storage → bandwidth
    - Example: 10M DAU × 5 req/day = ~580 QPS
      At 1KB/req = 50GB/day writes
 
-3. HIGH-LEVEL DESIGN
-   - Draw the boxes: client → LB → service → cache → DB
-   - Happy path first
+3. HIGH-LEVEL DESIGN — boxes first, always
+   - Client → LB → Service → Cache → DB
+   - Happy path only, don't over-engineer early
+   - FINISH THE BOXES before zooming into any component
 
 4. DEEP DIVE ON CRITICAL COMPONENTS
    - Where will it bottleneck?
@@ -70,13 +71,13 @@ Not scale of knowledge — quality of thinking.
 
 #### Communication
 - [ ] REST design — idempotency, status codes, versioning
-- [ ] Async via queues — why they exist, Kafka vs RabbitMQ conceptually, at-least-once vs exactly-once
+- [x] Async via queues — Kafka pub/sub, consumer groups, partitions, at-least-once ✅ Session 3
 - [ ] WebSockets vs polling vs SSE — when each fits
 - [ ] gRPC — why faster, when to prefer over REST
 
 #### Reliability
 - [ ] CAP theorem — applying it, not just reciting it
-- [x] Rate limiting — fixed window, sliding window, token bucket, distributed rate limiting ✅ Session 2
+- [x] Rate limiting — fixed window, sliding window, token bucket, distributed ✅ Session 2
 - [ ] Circuit breaker — what failure it prevents, how it works
 - [ ] Idempotency — why it matters in distributed systems, how to implement
 - [ ] Graceful degradation — designing for partial failure
@@ -85,8 +86,8 @@ Not scale of knowledge — quality of thinking.
 
 ### 🟡 Tier 2 — Expected at strong mid-level
 
-- [ ] Consistent hashing — what problem it solves (distributed caches, avoiding reshuffling)
-- [ ] Distributed locking — when you need it, how it's done (Redis SETNX / Redlock)
+- [ ] Consistent hashing — what problem it solves
+- [ ] Distributed locking — Redis SETNX / Redlock
 - [ ] Two-phase commit vs SAGA — distributed transactions
 - [ ] Event sourcing + CQRS — what they solve
 - [ ] Search systems — inverted index, why LIKE queries don't scale
@@ -97,10 +98,10 @@ Not scale of knowledge — quality of thinking.
 
 ### 🟢 Tier 3 — Shows depth
 
-- [ ] Consensus — Raft/Paxos intuition (leader election, quorum)
+- [ ] Consensus — Raft/Paxos intuition
 - [ ] Vector clocks — causality in distributed systems
-- [ ] Bloom filters — probabilistic membership, use cases
-- [ ] LSM trees vs B-trees — write-optimized vs read-optimized
+- [ ] Bloom filters — probabilistic membership
+- [ ] LSM trees vs B-trees — write vs read optimized
 - [ ] Column-oriented databases — why fast for analytics
 
 ---
@@ -111,8 +112,8 @@ Not scale of knowledge — quality of thinking.
 |---|--------|------------------------|--------|-------|
 | 1 | URL Shortener | Base62, cache-aside, read replicas, sharding | ✅ Done | |
 | 2 | Rate Limiter | Fixed/sliding window, Redis central state, distributed problem | ✅ Done | |
-| 3 | Notification System | Async queues, fan-out, push vs pull | 🔴 | Next |
-| 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs | 🔴 | |
+| 3 | Notification System | Queues, fan-out, batching, pub/sub, Celery+Redis | ✅ Done | |
+| 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs | 🔴 | Next |
 | 5 | Twitter/Instagram Feed | Fan-out on write vs read | 🔴 | |
 | 6 | Chat System (WhatsApp) | WebSockets, message ordering | 🔴 | |
 | 7 | Typeahead / Autocomplete | Trie, caching hot queries | 🔴 | |
@@ -128,10 +129,10 @@ Not scale of knowledge — quality of thinking.
 **Concepts covered:** Caching (what, why, where), eviction (LRU), invalidation strategies (cache-aside, write-through, write-behind), read replicas, sharding, Base62 encoding, horizontal vs vertical scaling
 
 **What was strong:**
-- Problem-first thinking — always starts with why
+- Problem-first thinking
 - Core caching insight landed cleanly
-- Cache placement in URL shortener — correct and unprompted
-- Read replica vs shard distinction — nailed the one-liner
+- Cache placement — correct and unprompted
+- Replica vs shard one-liner nailed
 
 **What to keep sharpening:**
 - Name precision: cache-aside, vertical vs horizontal
@@ -147,45 +148,94 @@ Not scale of knowledge — quality of thinking.
 ---
 
 ### Session 2 — Rate Limiter
-**Concepts covered:** Fixed window counter, sliding window timestamps, memory estimation, distributed state problem, centralizing state in Redis
+**Concepts covered:** Fixed window counter, sliding window timestamps, memory estimation, distributed state problem, centralizing state in Redis, Redis failure strategies
 
 **What was strong:**
-- Asked requirements questions upfront without being prompted — big improvement
-- Correctly identified Redis as the right store over DB
-- Understood the fixed window boundary exploit clearly
-- Memory estimation — right approach, clean math
-- Grasped the distributed problem quickly once stated
+- Asked requirements questions upfront — big improvement
+- Correctly identified Redis over DB
+- Understood fixed window boundary exploit
+- Memory estimation clean and correct
+- Redis + Celery architecture explained correctly from own experience
 
 **What to keep sharpening:**
-- After designing a component, always ask: *"what happens when this fails?"* — didn't do this for Redis
-- Trade-off articulation — be more deliberate: decision → mechanism → cost → when acceptable
+- After designing a component: "what happens when this fails?"
+- Trade-off articulation — decision → mechanism → cost → when acceptable
 
 **Key one-liners:**
-- Fixed window = memory efficient, has boundary exploit (198 requests in 2 seconds)
+- Fixed window = memory efficient, has boundary exploit
 - Sliding window = accurate, 50x more memory
 - Distributed state solution = centralize in Redis, keep servers stateless
-- In distributed systems: simplest solution to shared state is centralizing it
+- Fail open = allow all on Redis failure (most common choice)
 
-**Size reference (memorize):**
+**Size reference:**
 - Integer/timestamp = 8 bytes
 - Short string = 100 bytes
 - Default document = 1KB
 
 ---
 
+### Session 3 — Notification System
+**Concepts covered:** Kafka pub/sub, consumer groups, partitions, two-stage fan-out, notification batching/aggregation, Celery+Redis architecture, three notification flows
+
+**What was strong:**
+- Immediately reached for queues — correct and unprompted
+- Decoupling reasoning was clear and well articulated
+- Partition/consumer sizing was correct
+- Independently invented notification batching — not prompted
+- Connected Redis counters + periodic jobs naturally
+
+**What to keep sharpening:**
+- Draw full architecture diagram BEFORE zooming into sizing
+- Finish the boxes first, then go deep
+
+**Key patterns:**
+- Fan-out on write = expand work at write time, simple reads
+- Two-stage fan-out = 1 event → fan-out service → N individual messages → workers
+- Notification batching = Redis counter + periodic job → one aggregated notification
+- Three flows: direct (1→1), fan-out (1→many), aggregation (many→1 batched)
+
+**Full notification system diagram:**
+```
+Event Sources
+      ↓
+API Layer → Kafka topic: "events"
+      ↓
+Fan-out Service
+  → direct/fan-out → Kafka topic: "notifications"
+  → aggregate      → Redis counter
+      ↓
+Notification Workers (100 consumers)
+  → checks user preferences
+  → routes to Push / Email / SMS service
+      ↓
+Push (APNs/FCM) | Email (SendGrid) | SMS (Twilio)
+      ↓
+End User Device
+
+Separately:
+Redis counters → Celery Beat → Aggregation job → Workers → Batched notification
+```
+
+---
+
 ## What Great Looks Like in the Room
 
-- **Back-of-envelope without hesitation.** "10M users × 100 timestamps × 8 bytes = 8GB"
-- **Naming trade-offs explicitly.** "I'm trading memory for accuracy here, acceptable if budget allows"
-- **Scope control.** "I'll focus on the write path first, come back to reads"
-- **Failure thinking.** After designing: what happens when this component goes down?
+- **Back-of-envelope without hesitation**
+- **Naming trade-offs explicitly** — not just what, but why
+- **Finish the diagram before zooming in** — boxes first, depth second
+- **Failure thinking** — unprompted, after every component
+- **Scope control** — "I'll come back to that"
 
 ---
 
 ## Running Notes & Patterns
 
-- URL shortener mappings are immutable → cache TTL can be very long, staleness is a non-issue
-- Read-heavy systems → replicas first, sharding only when writes become the bottleneck
-- Don't over-engineer: know when NOT to add complexity
-- Stateless servers + centralized state = the foundation of scalable distributed systems
-- Rate limiter Redis failure = either block all or allow all — need fallback strategy (allow-on-failure is common)
+- Stateless servers + centralized state = foundation of scalable distributed systems
+- URL shortener mappings are immutable → aggressive caching, long TTL fine
+- Read-heavy → replicas first. Write bottleneck → sharding
+- Don't over-engineer — know when NOT to add complexity
+- Fan-out on write = expand at write time, reads stay simple
+- Pub/sub = one event, multiple independent consumer groups
+- Kafka partitions = ceiling on parallelism. More partitions = more consumers possible
+- Rate limiter Redis failure → fail open (availability > strict limiting)
+- Notification batching = many events → one aggregated message (Instagram like pattern)
