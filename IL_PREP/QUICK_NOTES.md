@@ -55,7 +55,7 @@ User → Browser cache → CDN → App cache (Redis) → DB → DB buffer pool
 | Write-through | DB + cache | Slow writes |
 | Write-behind | Cache first, DB async | Data loss |
 
-**When aggressive caching is safe:** Immutable data (URL mappings) — long TTL fine, staleness impossible.
+**When aggressive caching is safe:** Immutable data (URL mappings) — long TTL fine.
 
 ---
 
@@ -68,56 +68,124 @@ User → Browser cache → CDN → App cache (Redis) → DB → DB buffer pool
 
 ---
 
-## Rate Limiting
+## CAP Theorem
 
-**Fixed window:** 1 counter + 1 timestamp per user. Memory efficient. Boundary exploit risk.
+```
+C — Consistency      : every read gets the latest write
+A — Availability     : every request gets a response
+P — Partition Tolerance : system works despite network failures
 
-**Sliding window:** List of timestamps per user. Accurate. 50x more memory.
+P is non-negotiable (network partitions always happen)
+Real choice: C or A when partition occurs
+```
 
-**Distributed:** All servers → one central Redis. Stateless servers = any server handles any request.
+**CP systems** — consistency over availability
+- SQL DBs, HBase, Zookeeper
+- Use when: banking, payments, anything where wrong data = disaster
 
-**Redis failure:** Fail open (allow all) = most common. Fail closed (reject all) = security critical.
+**AP systems** — availability over eventual consistency
+- Cassandra, DynamoDB, DNS
+- Use when: social feeds, likes, carts — stale data briefly is fine
+
+**Interview formula:**
+> *"I'd use Cassandra here — this is AP. Eventual consistency is acceptable because
+> [stale likes/feed is fine]. Availability matters more than perfect consistency."*
+
+**Consistency models:**
+- Strong consistency = every read sees latest write (CP)
+- Eventual consistency = reads may be briefly stale, converge over time (AP)
 
 ---
 
-## Message Queues
+## Consistent Hashing
 
-**Point-to-point:** Each message → one consumer. Good for distributing work.
+**Problem with normal hashing:** hash(key) % N — adding/removing a server remaps ~100% of keys → cache invalidated → DB gets hammered.
 
-**Pub/Sub:** Each message → all subscriber groups. Good for one event, multiple systems.
+**Consistent hashing solution:**
+- Imagine a ring of 0 → 2³²
+- Place servers at positions on the ring (hash their names)
+- For any key → hash it → walk clockwise → first server = your server
+- Add a server → only ~1/N keys remapped (just the new server's neighbour)
 
-**Kafka specifics:**
-- Topic split into partitions → each partition assigned to one consumer in a group
-- More partitions = higher parallelism ceiling
-- Messages retained after consumption (unlike Redis queue)
-- Multiple consumer groups read same topic independently
+**Virtual nodes:** Each physical server gets multiple positions on ring → even load distribution even as servers are added/removed.
 
-**Celery + Redis:**
+**One-liner:**
+> *"Normal hashing remaps ~100% of keys on server change.
+> Consistent hashing remaps only ~1/N. Virtual nodes ensure even load."*
+
+**Used in:** Redis Cluster, Cassandra, DynamoDB, CDNs.
+
+---
+
+## Leader-Follower + Quorum
+
+**Leader-Follower:**
+- One leader accepts all writes
+- Followers replicate from leader, serve reads
+- Leader = primary, Follower = replica (same concept, formal name)
+
+**When leader dies → Leader Election:**
+- Followers vote for a new leader
+- Need quorum (majority) to elect → prevents split-brain
+
+**Quorum = majority of nodes:**
 ```
-Celery Beat → checks periodic tasks table → pushes to Redis (the queue)
-Celery Worker → pops from Redis → executes task
-Redis IS the Celery queue (Redis List under the hood)
+5 nodes → quorum = 3
+Network splits → group of 3 can elect leader
+             → group of 2 cannot (no majority)
+Two leaders simultaneously impossible ✅
+```
+
+**Split-brain:** Two nodes both think they're leader → data diverges → catastrophic.
+**Quorum prevents it:** Two groups cannot both hold majority simultaneously.
+
+**Where it's used:**
+- Kafka — every partition has a leader broker
+- PostgreSQL with Patroni — automatic failover via quorum
+- Zookeeper, etcd — built entirely on leader election
+
+**Interview line:**
+> *"If the leader dies, a new one is elected via quorum among followers.
+> Majority requirement prevents split-brain — two groups can't both hold majority."*
+
+---
+
+## Rate Limiting
+
+**Fixed window:** 1 counter + 1 timestamp per user. Memory efficient. Boundary exploit risk.
+**Sliding window:** List of timestamps. Accurate. 50x more memory.
+**Distributed:** All servers → one central Redis. Stateless servers.
+**Redis failure:** Fail open (most common). Fail closed (security critical).
+
+---
+
+## Message Queues — Kafka
+
+**Topic** = the channel. Producers write, consumers read.
+**Partition** = splits topic for parallelism. Ceiling on consumers per group.
+**Consumer Group** = independent subscriber. Gets ALL messages.
+**Consumer** = worker within group. Gets assigned partitions.
+
+```
+Rule: consumers per group ≤ partitions
+Multiple groups = pub/sub (each group gets all messages independently)
 ```
 
 **Kafka vs Celery+Redis:**
 - Simple background jobs → Celery + Redis
-- High throughput, multiple consumers, retention needed → Kafka
+- High throughput, multiple consumers, retention → Kafka
 
 ---
 
 ## URL Shortener
 
-**APIs:**
 ```
 POST /urls  { long_url } → { short_url }
 GET  /{code}             → HTTP 302 redirect
 ```
 
-**Code generation:** Base62(auto-increment ID). 62⁷ = 3.5 trillion codes. No collisions.
-
-**Read flow:** Cache check → HIT: 302 (~1ms) | MISS: DB → populate cache → 302 (~20ms)
-
-**Scale:** Cache first → read replicas → sharding (only if writes bottleneck)
+Base62(auto-increment ID). 62⁷ = 3.5 trillion. No collisions.
+Read flow: Cache HIT (~1ms) | MISS → DB → populate cache (~20ms)
 
 ---
 
@@ -130,34 +198,17 @@ Fan-out (1→many): Event → Fan-out Service → N messages → Workers → Sen
 Aggregation:      N events → Redis counter → Periodic job → 1 batched notification
 ```
 
-**Two-stage fan-out:**
-```
-1 event → Fan-out Service → 10M individual messages → 100 workers → 10M sends
-```
-
-**Full diagram:**
-```
-API Layer → Kafka "events"
-      ↓
-Fan-out Service
-  → Kafka "notifications" (direct/fan-out)
-  → Redis counter (aggregation)
-      ↓
-Notification Workers
-  → Push (APNs/FCM) | Email (SendGrid) | SMS (Twilio)
-
-Redis counters → Celery Beat → Batched notifications
-```
-
-**Notification batching:** Many events → Redis counter → one "X people liked your post" message. Instagram/Facebook pattern.
+**Fan-out:** 1 event → Fan-out Service pushes N individual messages → N workers process in parallel.
+**Batching:** Many likes → Redis counter → "X people liked your post" (Instagram pattern).
 
 ---
 
-## Core Distributed Systems Principle
+## Core Distributed Systems Principles
 
 > **Stateless servers + centralized state = scalable distributed system**
-
-Servers remember nothing. State lives in Redis/DB. Any server handles any request. Add servers freely.
+> **Quorum (majority) = the safe way to make distributed decisions**
+> **CAP: you must choose C or A when partition occurs**
+> **Consistent hashing: minimize remapping when topology changes**
 
 ---
 
@@ -174,6 +225,7 @@ Servers remember nothing. State lives in Redis/DB. Any server handles any reques
 | 62⁷ combinations | ~3.5 trillion |
 | HTTP 302 | Temporary Redirect |
 | HTTP 429 | Too Many Requests |
+| Quorum for 5 nodes | 3 (majority) |
 
 ---
 
@@ -184,17 +236,6 @@ Servers remember nothing. State lives in Redis/DB. Any server handles any reques
 
 ---
 
-## Patterns Seen Across Systems
-
-- Fan-out on write = expand at write time, reads stay simple
-- Pub/sub = one event, multiple independent consumers
-- Immutable data = cache aggressively, long TTL
-- Shared state across servers = centralize it (Redis)
-- High read load = replicas. High write load = sharding.
-- Don't over-engineer — know when NOT to add complexity
-
----
-
 ## What Separates Good from Great
 
 - Asks requirements before touching the design
@@ -202,9 +243,10 @@ Servers remember nothing. State lives in Redis/DB. Any server handles any reques
 - Names trade-offs explicitly — not just what, but why
 - Failure thinking unprompted after every component
 - Back-of-envelope estimation without hesitation
-- Scope control — "I'll come back to that"
+- Connects CAP choice to storage system choice
+- Mentions quorum/leader election when discussing DB reliability
 
 ---
 
-*Sessions complete: Caching, URL Shortener, Rate Limiter, Notification System*
+*Sessions complete: Caching, URL Shortener, Rate Limiter, Notification System, CAP, Consistent Hashing, Leader-Follower*
 *Next: Pastebin / File Upload (object storage, CDN, presigned URLs)*
