@@ -250,3 +250,37 @@ Aggregation:      N events → Redis counter → Periodic job → 1 batched noti
 
 *Sessions complete: Caching, URL Shortener, Rate Limiter, Notification System, CAP, Consistent Hashing, Leader-Follower*
 *Next: Pastebin / File Upload (object storage, CDN, presigned URLs)*
+
+---
+
+## Idempotency
+
+**Problem:** Queues guarantee at-least-once delivery. Under failure, same message may arrive twice. Without idempotency → duplicate processing (double charge, duplicate notification).
+
+**Definition:** An operation is idempotent if doing it N times = doing it once.
+
+**The pattern — idempotency key:**
+```
+Message/request arrives with unique key
+      ↓
+Check Redis/DB: seen this key before?
+YES → skip, return cached result
+NO  → process → store key + result → return
+```
+
+**Who generates the key:** CLIENT generates it once, reuses on every retry. Never the server.
+
+**Delivery guarantees:**
+| Guarantee | Meaning | Risk |
+|-----------|---------|------|
+| At-most-once | Once or not at all | Can lose messages |
+| At-least-once | Always delivered, may repeat | Can duplicate |
+| Exactly-once | Precisely once | Complex, expensive |
+
+**Standard pattern:** At-least-once + idempotent consumers = safe distributed processing.
+
+**Real world:** Stripe requires idempotency key on every payment API call. Safe to retry on network failure without double charge.
+
+**One-liner:**
+> *"Client generates key once before first attempt, reuses on retry.
+> Server deduplicates on it — processes once, returns cached result on repeats."*
