@@ -1,0 +1,107 @@
+\documentclass[10pt, letterpaper]{article}
+
+\usepackage[top=0.42in, bottom=0.42in, left=0.55in, right=0.55in]{geometry}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{array}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+
+% Tight bullets — no extra space anywhere
+\setlist[itemize]{
+  noitemsep, topsep=1.5pt, parsep=0pt, partopsep=0pt,
+  leftmargin=1.2em, label=\textbullet
+}
+
+% Section rule
+\newcommand{\ressection}[1]{%
+  \vspace{4pt}%
+  {\large\textbf{#1}}%
+  \vspace{0pt}\hrule height 0.4pt\vspace{3pt}%
+}
+
+\newcommand{\entryhead}[2]{%
+  \textbf{#1} \hfill \textit{#2}%
+}
+
+\begin{document}
+
+%──────────── HEADER ────────────────────────────────────────────────────────
+\begin{center}
+  {\LARGE\textbf{AISHWARYA SONI}}\\[2pt]
+  {\small
+    \href{mailto:aishujsoni@gmail.com}{aishujsoni@gmail.com} \;$|$\;
+    \href{https://www.linkedin.com/in/aishwarya-soni-554203192/}{linkedin.com/in/aishwarya-soni-554203192} \;$|$\;
+    \href{https://github.com/aishusoni}{github.com/aishusoni} \;$|$\;
+    Bangalore, India
+  }
+\end{center}
+
+%──────────── EXPERIENCE ────────────────────────────────────────────────────
+\ressection{EXPERIENCE}
+
+\entryhead{Honeywell Connected Enterprise (HCE)}{Jul 2023 -- Present}\\
+\textit{Software Development Engineer 2 \;|\; Bangalore, India}
+
+\vspace{3pt}
+\textbf{Forge Operation Center (FOC)} \hfill \textit{Executive Intelligence Dashboard}
+\begin{itemize}
+  \item Architected and built unified executive dashboard aggregating \textasciitilde980TB across 30 products, 25K customers, 282K sites, 5M assets, and 85M data points for C-suite and VP-level stakeholders
+  \item Migrated gateway-product mapping from a 4-hour failure-prone Celery batch job to parallelised Kafka consumers with DLQ and automated alerting, reducing runtime by \textbf{87\%} (4\,hr\,$\rightarrow$\,30\,min)
+  \item Integrated Google Earth API to render a live world map of 40K IoT gateways and 282K customer sites across all Honeywell products
+\end{itemize}
+
+\vspace{2pt}
+\textbf{Platform Health Dashboard} \hfill \textit{Internal SRE Monitoring}
+\begin{itemize}
+  \item Built configurable health monitoring platform tracking 50 services across 8 modules, ingesting metrics from InfluxDB, Victoria Metrics, Azure IoT Hub, Databricks, and custom APIs
+  \item Designed zero-code service onboarding via customised Django admin — SREs configure thresholds and data sources without any engineering intervention
+  \item Built OpenAI-powered summary agent surfacing failure patterns, cross-service correlations, and degradation trends over user-selected time ranges
+\end{itemize}
+
+\vspace{2pt}
+\textbf{SaaSOps Portal} \hfill \textit{SRE Automation Platform}
+\begin{itemize}
+  \item Built centralised Azure service-principal secret management across 5 tenants and 100+ principals with RBAC, 30-day expiry alerting, and Octopus auto-propagation — eliminating manual secret-sharing dependencies
+  \item Developed DEC operations dashboard tracking \textasciitilde1,000 tenant jobs with guided customer onboarding, real-time job-status visibility, and failure monitoring across Databricks pipelines
+\end{itemize}
+
+%──────────── EDUCATION ─────────────────────────────────────────────────────
+\ressection{EDUCATION}
+
+\entryhead{Indian Institute of Technology Kharagpur}{2018 -- 2023}\\
+M.Tech Dual Degree (B.Tech\,+\,M.Tech), Electronics \& ECE \;|\; CGPA: \textbf{8.6\,/\,10} \;|\; Minor: CSE (CGPA: 8.75\,/\,10)\\
+\textit{Specialisation: Visual Information Processing \& Embedded Systems \;|\; Micro-specialisation: Embedded Control, Software, Modelling \& Design}
+
+\vspace{1pt}
+\begin{itemize}
+  \item \textbf{M.Tech Thesis:} \textit{``The Art of Persuasion in the Face of Skepticism: Bayesian Methods for Handling (dis)Trust''} \;|\; Prof.\,Amitalok J.\,Budkuley
+  \item \textbf{IEEE ISIT 2024:} \textit{``Bayesian Persuasion: From Persuasion toward Counter-suasion''} \;|\; 2\textsuperscript{nd} author
+\end{itemize}
+
+%──────────── SKILLS ────────────────────────────────────────────────────────
+\ressection{SKILLS}
+
+\begin{tabular}{@{}p{2.1cm} p{13.5cm}}
+  \textbf{Languages}      & Python, JavaScript / TypeScript, C / C++, SQL \\[1pt]
+  \textbf{Frameworks}     & Django, React, Node.js, Celery \\[1pt]
+  \textbf{Infrastructure} & Azure (IoT Hub, Event Grid, Service Bus), Kafka, Redis, PostgreSQL, InfluxDB, Victoria Metrics \\[1pt]
+  \textbf{Tools}          & Git, Databricks, OpenAI API, Google Earth / CesiumJS \\[1pt]
+  \textbf{Concepts}       & Microservices, event-driven architecture, multi-agent systems, REST APIs, observability \\
+\end{tabular}
+
+%──────────── AWARDS ────────────────────────────────────────────────────────
+\ressection{AWARDS \& ACHIEVEMENTS}
+
+\begin{itemize}
+  \item \textbf{JEE Advanced 2018} — All India Rank 1050 (Top 0.07\% among 1.5\,M candidates)
+  \item \textbf{IEEE ISIT 2024} — Published \textit{``Bayesian Persuasion: From Persuasion toward Counter-suasion''}
+  \item \textbf{Inter-IIT 2022--23} — Gold Medal, Music Cup (1\textsuperscript{st} among all IITs nationwide)
+  \item \textbf{NSEA 2017} — State Rank 2, Gujarat (National Standard Examination in Astronomy)
+\end{itemize}
+
+\end{document}
