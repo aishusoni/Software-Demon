@@ -284,3 +284,66 @@ NO  → process → store key + result → return
 **One-liner:**
 > *"Client generates key once before first attempt, reuses on retry.
 > Server deduplicates on it — processes once, returns cached result on repeats."*
+
+---
+
+## Load Balancing
+
+**What it is:** Sits in front of servers, distributes incoming traffic across them.
+
+**L4 vs L7:**
+
+| | L4 (Transport) | L7 (Application) |
+|---|---|---|
+| Sees | IP + port only | HTTP headers, URL, cookies, body |
+| Routing | Dumb — just forwards packets | Smart — content-based routing |
+| Speed | Faster | Slightly slower |
+| Use when | Raw TCP, max throughput | HTTP traffic, need smart routing |
+
+**L7 example:**
+```
+/api/*    → API servers
+/video/*  → Video servers
+/static/* → CDN
+Mobile User-Agent → mobile-optimized servers
+```
+
+**Routing algorithms:**
+- **Round Robin** — sequential. Simple, equal servers, equal requests.
+- **Weighted Round Robin** — proportional to server capacity.
+- **Least Connections** — goes to server with fewest active connections. Best for variable request duration.
+- **IP Hash** — same IP always → same server (sticky sessions).
+
+**Sticky sessions:**
+- Same user always hits same server
+- Needed when session state is stored locally on server
+- DANGEROUS — breaks horizontal scaling, single point of failure per user
+- FIX: store session state in Redis → stateless servers → no sticky sessions needed
+
+> *"Sticky sessions are a band-aid for stateful servers. The real fix is stateless servers."*
+
+**Health checks:**
+```
+LB pings /health every 5s
+Timeout/error → server removed from pool
+Recovery → server re-added automatically
+```
+This enables zero-downtime deployments.
+
+---
+
+## All Tier 1 Concepts — Complete ✅
+
+```
+✅ Caching + invalidation
+✅ Database replication + sharding
+✅ CAP theorem
+✅ Consistent hashing + virtual nodes
+✅ Leader-follower + quorum
+✅ Rate limiting (fixed/sliding window)
+✅ Message queues + Kafka internals
+✅ Idempotency
+✅ Load balancing — L4/L7, algorithms, sticky sessions
+```
+
+*Next: Case studies — Pastebin, Feed, Chat, LMS*
