@@ -78,7 +78,7 @@ Not scale of knowledge — quality of thinking.
 #### Reliability
 - [x] CAP theorem — CP vs AP, strong vs eventual consistency ✅ Session 4
 - [x] Rate limiting — fixed window, sliding window, token bucket, distributed ✅ Session 2
-- [ ] Circuit breaker — what failure it prevents, how it works
+- [x] Circuit breaker — CLOSED/OPEN/HALF-OPEN, DLQ, exponential backoff ✅ Session 5
 - [x] Idempotency — at-least-once delivery, idempotency keys, client generates key ✅ Session 4
 - [ ] Graceful degradation — designing for partial failure
 
