@@ -385,3 +385,52 @@ Test request fails       → HALF-OPEN → OPEN
 **One-liner:**
 > *"CLOSED normal, OPEN fast-fail on threshold, HALF-OPEN test recovery.
 > Failed messages → DLQ → retry with exponential backoff."*
+
+---
+
+## Object Storage + Presigned URLs + CDN
+
+**Storage decision tree:**
+```
+Structured data, queryable    → PostgreSQL
+Large unstructured files      → Object Storage (S3, Azure Blob)
+Small key-value, fast reads   → Redis
+```
+
+**Object storage:** Store files as blobs accessed by key. No schema. Handles any size. Cheap at scale. S3, Azure Blob, GCS.
+
+**Presigned URL:**
+- Server generates temporary signed URL (~1ms, just crypto math)
+- Client downloads DIRECTLY from S3 — server out of the loop
+- Valid for configurable time (1hr, 24hr)
+- Use for: private files, expiring content, large file downloads
+
+```
+User requests file
+      ↓
+Server checks DB → generates presigned URL
+      ↓
+Returns URL to client
+      ↓
+Client downloads directly from S3 (server not involved)
+```
+
+**CDN:**
+- Global network of edge servers
+- First request → CDN fetches from S3, caches at edge
+- Subsequent requests → served from nearest edge (~5ms vs 200ms)
+- Use for: public static content (images, videos, public pastes)
+- Don't use for: private/expiring content (use presigned URLs instead)
+
+**TTL alignment:**
+- Paste expires at midnight → set Redis TTL to expire at midnight too
+- Cache auto-invalidates when business logic says content is expired
+
+**Pastebin pattern:**
+```
+text paste  → store in Postgres directly
+file paste  → upload to S3, store S3 key in Postgres
+public file → CDN URL
+private/expiring file → presigned URL
+metadata    → cache in Redis with TTL = paste expiry
+```
