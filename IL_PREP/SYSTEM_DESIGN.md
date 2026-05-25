@@ -56,8 +56,8 @@ Not scale of knowledge — quality of thinking.
 ### 🔴 Tier 1 — Non-negotiable
 
 #### Scalability Primitives
-- [ ] Horizontal scaling + statelessness — why statelessness is a prerequisite to scaling out
-- [ ] Load balancing — algorithms (round robin, least conn, IP hash), L4 vs L7, sticky sessions
+- [x] Horizontal scaling + statelessness — why statelessness is a prerequisite to scaling out ✅ Session 4
+- [x] Load balancing — L4 vs L7, algorithms (round robin, least conn, IP hash), sticky sessions ✅ Session 4
 - [x] Caching — where to cache, eviction (LRU/LFU/TTL), cache invalidation strategies ✅ Session 1
 - [ ] CDN — how it works, when it helps, when it doesn't
 - [x] Database replication — primary-replica, read replicas, replication lag ✅ Session 1
@@ -76,17 +76,17 @@ Not scale of knowledge — quality of thinking.
 - [ ] gRPC — why faster, when to prefer over REST
 
 #### Reliability
-- [ ] CAP theorem — applying it, not just reciting it
+- [x] CAP theorem — CP vs AP, strong vs eventual consistency ✅ Session 4
 - [x] Rate limiting — fixed window, sliding window, token bucket, distributed ✅ Session 2
 - [ ] Circuit breaker — what failure it prevents, how it works
-- [ ] Idempotency — why it matters in distributed systems, how to implement
+- [x] Idempotency — at-least-once delivery, idempotency keys, client generates key ✅ Session 4
 - [ ] Graceful degradation — designing for partial failure
 
 ---
 
 ### 🟡 Tier 2 — Expected at strong mid-level
 
-- [ ] Consistent hashing — what problem it solves
+- [x] Consistent hashing — ring model, virtual nodes, ~1/N remapping ✅ Session 4
 - [ ] Distributed locking — Redis SETNX / Redlock
 - [ ] Two-phase commit vs SAGA — distributed transactions
 - [ ] Event sourcing + CQRS — what they solve
@@ -239,3 +239,31 @@ Redis counters → Celery Beat → Aggregation job → Workers → Batched notif
 - Kafka partitions = ceiling on parallelism. More partitions = more consumers possible
 - Rate limiter Redis failure → fail open (availability > strict limiting)
 - Notification batching = many events → one aggregated message (Instagram like pattern)
+
+
+### Session 4 — Core Distributed Systems Concepts
+**Concepts covered:** CAP theorem, consistent hashing + virtual nodes, leader-follower + quorum, idempotency, load balancing (L4/L7), statelessness, delivery guarantees
+
+**What was strong:**
+- CAP applied correctly to Instagram likes (AP) and banking (CP) — right reasoning, right answer
+- Consistent hashing — explained ring model + virtual nodes fully without prompting
+- Quorum — correctly identified that majority prevents two groups from simultaneously holding it
+- Load balancing — L7 reasoning for video streaming was clean and immediate
+- Idempotency — correctly applied idempotency key pattern to double payment scenario
+
+**Key one-liners:**
+- CAP: P is non-negotiable, real choice is C vs A when partition occurs
+- Consistent hashing: ~1/N remapping vs ~100% for normal hashing
+- Virtual nodes: multiple ring positions per server = even load distribution
+- Leader-follower: one leader takes writes, followers replicate + serve reads
+- Quorum (majority): two groups can't simultaneously hold majority → split-brain impossible
+- Idempotency: client generates key once, reuses on retry, server deduplicates
+- L4 = IP+port only. L7 = content-aware routing. Most web apps use L7.
+- Sticky sessions = band-aid. Real fix = stateless servers + Redis for session state.
+
+**Delivery guarantees:**
+- At-most-once = can lose messages
+- At-least-once = can duplicate (Kafka default) → needs idempotent consumers
+- Exactly-once = expensive, complex
+
+**All Tier 1 concepts now complete ✅**
