@@ -347,3 +347,41 @@ This enables zero-downtime deployments.
 ```
 
 *Next: Case studies — Pastebin, Feed, Chat, LMS*
+
+---
+
+## Circuit Breaker
+
+**Problem it solves:** One slow/failing service causes cascading failure — threads pile up waiting, entire system chokes.
+
+**Three states:**
+```
+CLOSED     → normal operation, requests flow through
+OPEN       → failure threshold crossed, instant fail (no waiting)
+HALF-OPEN  → cooldown expired, one test request allowed through
+```
+
+**State transitions:**
+```
+Failure rate > threshold → CLOSED → OPEN
+Wait cooldown (30s)      → OPEN → HALF-OPEN
+Test request succeeds    → HALF-OPEN → CLOSED
+Test request fails       → HALF-OPEN → OPEN
+```
+
+**Why fast fail is better:** 1000 requests × 30s timeout = system choked. 1000 instant failures = system free, B gets breathing room.
+
+**Failed messages → Dead Letter Queue (DLQ)**
+- Don't drop failed messages
+- Send to DLQ → retry worker processes with exponential backoff
+- Backoff: 1s → 2s → 4s → 8s (don't flood recovering service)
+
+**Graceful degradation toolkit:**
+- **Circuit breaker** — stop calling failing service
+- **Fallback** — return cached/default response instead of error
+- **Timeout** — never wait forever, always set max wait
+- **Bulkhead** — separate thread pools per downstream service
+
+**One-liner:**
+> *"CLOSED normal, OPEN fast-fail on threshold, HALF-OPEN test recovery.
+> Failed messages → DLQ → retry with exponential backoff."*
