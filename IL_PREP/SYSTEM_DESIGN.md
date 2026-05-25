@@ -59,7 +59,7 @@ Not scale of knowledge — quality of thinking.
 - [x] Horizontal scaling + statelessness — why statelessness is a prerequisite to scaling out ✅ Session 4
 - [x] Load balancing — L4 vs L7, algorithms (round robin, least conn, IP hash), sticky sessions ✅ Session 4
 - [x] Caching — where to cache, eviction (LRU/LFU/TTL), cache invalidation strategies ✅ Session 1
-- [ ] CDN — how it works, when it helps, when it doesn't
+- [x] CDN — edge caching, global latency, push vs pull, public vs private ✅ Session 5
 - [x] Database replication — primary-replica, read replicas, replication lag ✅ Session 1
 - [x] Database sharding — strategies (hash, range), hot spots, cross-shard queries ✅ Session 1
 
@@ -67,7 +67,7 @@ Not scale of knowledge — quality of thinking.
 - [ ] SQL vs NoSQL — when does eventual consistency become acceptable? When does ACID matter?
 - [ ] Indexing — B-tree intuition, composite indexes, index trade-offs on writes
 - [ ] Write-ahead logging — what it is, why it enables durability
-- [ ] Object vs block vs file storage — S3 vs EBS vs EFS, when to use what
+- [x] Object storage — S3/Blob, presigned URLs, unstructured files ✅ Session 5
 
 #### Communication
 - [ ] REST design — idempotency, status codes, versioning
@@ -113,8 +113,8 @@ Not scale of knowledge — quality of thinking.
 | 1 | URL Shortener | Base62, cache-aside, read replicas, sharding | ✅ Done | |
 | 2 | Rate Limiter | Fixed/sliding window, Redis central state, distributed problem | ✅ Done | |
 | 3 | Notification System | Queues, fan-out, batching, pub/sub, Celery+Redis | ✅ Done | |
-| 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs | 🔴 | Next |
-| 5 | Twitter/Instagram Feed | Fan-out on write vs read | 🔴 | |
+| 4 | Pastebin / File Upload | Object storage, CDN, presigned URLs, TTL alignment | ✅ Done | |
+| 5 | Twitter/Instagram Feed | Fan-out on write vs read | 🔴 | Next |
 | 6 | Chat System (WhatsApp) | WebSockets, message ordering | 🔴 | |
 | 7 | Typeahead / Autocomplete | Trie, caching hot queries | 🔴 | |
 | 8 | Distributed Cache (Redis) | Consistent hashing, replication | 🔴 | |
@@ -267,3 +267,33 @@ Redis counters → Celery Beat → Aggregation job → Workers → Batched notif
 - Exactly-once = expensive, complex
 
 **All Tier 1 concepts now complete ✅**
+
+### Session 5 — Circuit Breaker + Pastebin
+**Concepts covered:** Circuit breaker (CLOSED/OPEN/HALF-OPEN), thread starvation, cascade failure, DLQ + exponential backoff, object storage, presigned URLs, CDN, TTL alignment with expiry
+
+**What was strong:**
+- Dead letter queue — named correctly and unprompted
+- Blob/object storage — reached for it independently
+- Cache placement — correct and unprompted
+- TTL alignment to paste expiry — understood immediately
+
+**What to keep sharpening:**
+- Object storage should be first instinct for any file >1MB, not NoSQL
+
+**Key concepts:**
+- Thread starvation = all threads frozen waiting on slow dependency
+- Cascade failure = starvation spreads service to service
+- Circuit breaker = fast fail preserves thread pool
+- Object storage = unstructured files, accessed by key, not DB rows
+- Presigned URL = temporary signed URL, client downloads directly from S3, server out of loop
+- CDN = edge servers globally, cache public static content close to user
+- TTL alignment = set Redis TTL = paste expiry time → auto-invalidates
+
+**Pastebin full flow:**
+```
+Create: POST /paste → text→Postgres | file→S3+Postgres key → Base62 ID → return link
+Read:   GET /abc123 → Redis cache → MISS→Postgres
+        text → return directly
+        file public  → CDN URL
+        file private → presigned S3 URL (expires with paste)
+```
