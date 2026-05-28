@@ -75,15 +75,18 @@
 
 \subp{Forge Operation Center (FOC)}
 \begin{itemize}
-  \item Built a unified executive dashboard aggregating \textasciitilde980\,TB across 30 products,
-        25K customers, 282K sites, 5M assets, and 85M data points for C-suite visibility
-        using \textbf{React, Django, PostgreSQL}, and \textbf{Celery/Redis}
-  \item Built a \textbf{Kafka}-based parallelised message queue for gateway-product mapping with
-        dedicated consumer groups, DLQ, and automated alerting — cutting processing time
-        by \textbf{87\%} (4\,hr\;$\rightarrow$\;30\,min) over the previous batch approach
-  \item Integrated \textbf{Google Earth API} to render a live world map of 40K IoT gateways and
-        282K customer sites across 30 Honeywell products with multi-source \textbf{PostgreSQL}
-        data models and sync pipelines for consistency at enterprise scale
+  \item Built a full-stack investor and leadership intelligence dashboard using \textbf{React,
+        Django,} and \textbf{PostgreSQL} to unify operational data across 30 products, 25K customers,
+        282K sites, 5M assets, and 85M data points into a single consolidated view
+  \item Engineered multi-source data ingestion pipelines using \textbf{Azure Service Bus, IoT Hub,}
+        and \textbf{Celery} workers on \textbf{AKS} — polling daily across product APIs, event queues,
+        and IoT streams to keep \textasciitilde980\,TB of enterprise data synchronised
+  \item Built real-time gateway health monitoring via a 5-minute cron pipeline served through a
+        \textbf{Redis} cache layer for 40K gateways; integrated \textbf{Google Earth API} to render
+        282K customer sites and 5M assets on a live global operational map
+  \item Built a \textbf{Kafka}-based parallelised consumer pipeline with dedicated consumer groups,
+        DLQ, and automated failure alerting for gateway-product mapping — achieving \textbf{87\%}
+        faster processing (4\,hr\;$\rightarrow$\;30\,min) over the prior \textbf{Celery} batch job
 \end{itemize}
 
 \subp{Platform Health Dashboard}
@@ -91,22 +94,22 @@
   \item Co-built a configurable service-health monitoring platform tracking 50 services across
         8 modules with health states and time-series trends, ingesting from \textbf{InfluxDB,
         Victoria Metrics, Azure IoT Hub, Databricks}, and custom APIs
-  \item Designed zero-code service onboarding via a customised \textbf{Django admin} — SREs
-        configure thresholds and data sources for new services across 4 business-region
-        tabs without any engineering code changes
-  \item Built an \textbf{OpenAI}-powered AI summary agent that surfaces degradation patterns,
-        cross-module failure correlations, and time-of-day incident trends over
+  \item Designed zero-code service onboarding via a customised \textbf{Django admin} — SREs configure
+        thresholds, alert rules, and data sources for new services across 4 business-region
+        tabs and 8 modules without any engineering intervention or code changes
+  \item Built an \textbf{OpenAI}-powered AI summary agent that surfaces service degradation patterns,
+        cross-module failure correlations, and recurring time-of-day incident trends over
         user-selected time ranges for on-call SRE teams
 \end{itemize}
 
 \subp{SaaSOps Portal}
 \begin{itemize}
-  \item Built a centralised \textbf{Azure} service-principal secret management system with
+  \item Built a centralised \textbf{Azure} service-principal secret management service with
         \textbf{RBAC}-gated access, 30-day expiry alerting, naming conventions, and auto-propagation
         to \textbf{Octopus} across 5 tenants and 100+ principals
-  \item Developed a \textbf{React\,+\,Django} operations dashboard tracking \textasciitilde1,000 tenant
-        jobs with business-group filters, real-time status visibility, and failure monitoring
-        across \textbf{Databricks} enrichment pipelines and a customer onboarding workflow
+  \item Developed a \textbf{React\,+\,Django} operations dashboard within a \textbf{microservices}
+        architecture, tracking \textasciitilde1,000 tenant jobs with business-group filters, real-time
+        status visibility, and failure monitoring across \textbf{Databricks} pipelines
 \end{itemize}
 
 %─── SKILLS ──────────────────────────────────────────────────────
