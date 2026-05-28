@@ -61,7 +61,7 @@
 \begin{itemize}
   \item \textbf{Indian Institute of Technology, Kharagpur} \hfill \textit{2018\;--\;2023}
     \begin{itemize}
-      \item \textit{M.Tech Dual Degree (B.Tech\,+\,M.Tech),\;\textbf{Electronics \& Electrical Communication Engineering};\;CGPA:\;\textbf{8.6\,/\,10}}
+      \item \textit{M.Tech Dual Degree (B.Tech\,+\,M.Tech), \textbf{Electronics \& Electrical Communication Engg.};\;CGPA:\;\textbf{8.6\,/\,10}}
       \item Minor:\;\textbf{Computer Science \& Engineering}\;|\;CGPA:\;8.75\,/\,10
       \item Micro-specialisation:\;\textbf{Embedded Control, Software, Modelling \& Design}
     \end{itemize}
@@ -75,38 +75,38 @@
 
 \subp{Forge Operation Center (FOC)}
 \begin{itemize}
-  \item Architected and built a unified executive dashboard aggregating \textasciitilde980\,TB across
-        30 Honeywell products, 25K customers, 282K sites, 5M assets, and 85M data points —
-        providing C-suite and VP-level stakeholders a consolidated single operational view
-  \item Migrated gateway-product mapping from a failure-prone 4-hour Celery batch job to parallelised
-        Kafka consumers with a dedicated consumer group, DLQ, and automated email alerting —
-        reducing runtime by \textbf{87\%} (4\,hr\;$\rightarrow$\;30\,min) and eliminating manual retriggers
-  \item Integrated Google Earth API for a live world map of 40K gateways and 282K sites; designed
-        PostgreSQL data models with Celery/Redis sync jobs to maintain consistency across
-        30 integrated products at enterprise scale
+  \item Built a unified executive dashboard aggregating \textasciitilde980\,TB across 30 products,
+        25K customers, 282K sites, 5M assets, and 85M data points for C-suite visibility
+        using \textbf{React, Django, PostgreSQL}, and \textbf{Celery/Redis}
+  \item Built a \textbf{Kafka}-based parallelised message queue for gateway-product mapping with
+        dedicated consumer groups, DLQ, and automated alerting — cutting processing time
+        by \textbf{87\%} (4\,hr\;$\rightarrow$\;30\,min) over the previous batch approach
+  \item Integrated \textbf{Google Earth API} to render a live world map of 40K IoT gateways and
+        282K customer sites across 30 Honeywell products with multi-source \textbf{PostgreSQL}
+        data models and sync pipelines for consistency at enterprise scale
 \end{itemize}
 
 \subp{Platform Health Dashboard}
 \begin{itemize}
-  \item Co-built configurable service-health monitoring platform tracking 50 services across 8 modules
-        and 4 business-region tabs with health states (operational, degraded, critical) and
-        hourly, daily, and weekly time-series trend visualisations per service
-  \item Designed zero-code service onboarding via customised Django admin and integrated metric ingestion
-        from InfluxDB, Victoria Metrics, Azure IoT Hub, Databricks logs, and custom APIs —
-        enabling SREs to extend platform coverage without engineering code changes
-  \item Built an OpenAI-powered AI summary agent to analyse user-selected time ranges and surface
-        full-uptime services, degradation patterns, cross-module failure correlations,
-        and recurring time-of-day incident trends for on-call SRE teams
+  \item Co-built a configurable service-health monitoring platform tracking 50 services across
+        8 modules with health states and time-series trends, ingesting from \textbf{InfluxDB,
+        Victoria Metrics, Azure IoT Hub, Databricks}, and custom APIs
+  \item Designed zero-code service onboarding via a customised \textbf{Django admin} — SREs
+        configure thresholds and data sources for new services across 4 business-region
+        tabs without any engineering code changes
+  \item Built an \textbf{OpenAI}-powered AI summary agent that surfaces degradation patterns,
+        cross-module failure correlations, and time-of-day incident trends over
+        user-selected time ranges for on-call SRE teams
 \end{itemize}
 
 \subp{SaaSOps Portal}
 \begin{itemize}
-  \item Built centralised Azure service-principal secret management across 5 tenants and 100+ principals
-        with RBAC-gated retrieval, 30-day expiry alerting, enforced naming conventions,
-        and automated propagation to Octopus — eliminating manual handoffs entirely
-  \item Developed DEC operations dashboard tracking \textasciitilde1,000 tenant jobs with region and
-        business-group filters, real-time job-status visibility, failure monitoring across
-        Databricks pipelines, and a guided customer onboarding workflow
+  \item Built a centralised \textbf{Azure} service-principal secret management system with
+        \textbf{RBAC}-gated access, 30-day expiry alerting, naming conventions, and auto-propagation
+        to \textbf{Octopus} across 5 tenants and 100+ principals
+  \item Developed a \textbf{React\,+\,Django} operations dashboard tracking \textasciitilde1,000 tenant
+        jobs with business-group filters, real-time status visibility, and failure monitoring
+        across \textbf{Databricks} enrichment pipelines and a customer onboarding workflow
 \end{itemize}
 
 %─── SKILLS ──────────────────────────────────────────────────────
