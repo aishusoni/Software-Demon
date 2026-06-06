@@ -316,3 +316,66 @@ Workers scale freely — more workers = more parallel task processing.
 > *"Our pipeline uses GitHub Actions for CI — unit tests, integration tests, plus Coverity for security static analysis, BlackDuck for license compliance, and SonarQube as a quality gate. On pass, we build a Docker image tagged with the commit hash and push to JFrog Artifactory. Octopus handles CD — it pulls the image and deploys to AKS, where we use namespace-level isolation per tenant-environment combination. Nginx Ingress Controller handles routing inside the cluster. Each deployment uses rolling updates with readiness probes for zero downtime. Celery workers run as separate deployments with HPA scaling, with Beat as a singleton to avoid duplicate task execution."*
 
 That's a complete, senior-level answer to "walk me through your deployment pipeline."
+
+---
+
+## 11. Kong — API Gateway (Facade Layer)
+
+**What a facade layer means:**
+Single entry point that hides all internal complexity. Clients talk to ONE endpoint. Kong figures out where to route things internally.
+
+**Kong vs Nginx — the distinction:**
+```
+Reverse Proxy  → forwards requests, hides backend servers
+Load Balancer  → distributes traffic across servers
+API Gateway    → auth + rate limiting + routing + logging + plugins
+```
+Every API gateway is a reverse proxy. Not every reverse proxy is an API gateway.
+
+**Kong is built on Nginx + OpenResty (Lua scripting).**
+But configured dynamically via API, not static nginx.conf files.
+
+**What Kong does in Honeywell architecture:**
+```
+Client request
+      ↓
+Kong API Gateway
+  ├── JWT validation      → reject invalid tokens before hitting AKS
+  ├── Rate limiting       → per user/service limits
+  ├── Request routing     → /foc/* → FOC cluster
+  │                          /building/* → Building Intelligence cluster
+  ├── Request transform   → add/strip headers
+  ├── Central logging     → every request logged
+  └── Analytics           → latency, error rates per service
+      ↓
+Correct AKS cluster → Nginx Ingress → Pods
+```
+
+**Two routing layers in Honeywell:**
+```
+Kong            → which cluster/service? (outer layer)
+Nginx Ingress   → which service inside cluster? (inner layer)
+K8s Service     → which pod inside service? (innermost)
+```
+
+**Why the facade pattern matters:**
+- Security: backend IPs/ports never exposed to internet
+- Flexibility: change backend architecture without clients knowing
+- Single enforcement point: auth/rate-limit patch in Kong protects all services
+
+**Full Honeywell request path:**
+```
+Honeywell device (corporate network)
+      ↓
+DNS resolution (internal only)
+      ↓
+Azure Firewall
+      ↓
+Kong API Gateway (validate JWT, rate limit, route)
+      ↓
+AKS Cluster → Nginx Ingress → K8s Service → Pod
+      ↓
+Application-level auth (groups, permissions)
+      ↓
+Business logic → Response
+```
