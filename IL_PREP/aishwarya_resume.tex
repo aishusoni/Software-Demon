@@ -75,18 +75,18 @@
 
 \subp{Forge Operation Center (FOC)}
 \begin{itemize}
-  \item Built a full-stack leadership intelligence dashboard using \textbf{React, Django,} and
-        \textbf{PostgreSQL} unifying data across 30 products, 25K customers, 282K sites,
-        5M assets, and 85M data points for investor and C-suite visibility
-  \item Engineered multi-source data ingestion pipelines using \textbf{Azure Service Bus, IoT Hub,
-        Kafka,} and \textbf{Celery} workers on \textbf{AKS} — polling daily across product APIs,
-        event queues, and IoT streams to keep \textasciitilde980\,TB of enterprise data synchronised
-  \item Built real-time gateway health monitoring via a 5-minute cron job served through a
-        \textbf{Redis} cache layer — tracking live connectivity status across 40K gateways
-        and powering automated alerts on health degradation
-  \item Designed \textbf{PostgreSQL} data models and \textbf{Celery/Redis} task queues to synchronise
-        KPIs, profitability, and churn metrics across 30 product verticals — giving leadership
-        and investors accurate and up-to-date business health data
+  \item Built a full-stack \textbf{React\,+\,Django\,+\,PostgreSQL} dashboard consolidating
+        \textbf{KPIs}, churn, and operational metrics across 30 products and 25K customers
+        — used by C-suite for monthly product accountability reviews and investor presentations
+  \item Engineered multi-source data ingestion using \textbf{Azure Service Bus, IoT Hub, Kafka,}
+        and scheduled \textbf{Celery} workers on \textbf{AKS} — aggregating KPIs, churn, and
+        performance metrics from 30 product sources across 282K sites and 5M assets
+  \item Implemented a \textbf{Redis} cache-aside layer for dashboard API endpoints — selectively
+        caching and invalidating relevant keys with cache-miss refill logic, reducing API
+        response times from \textbf{30--60\,sec to under 2\,sec}
+  \item Built platform reliability infrastructure using \textbf{ELK} for log aggregation and
+        automated alerting on pipeline failures — with 5-minute cron-based health checks
+        ensuring continuous monitoring across 40K gateways and all ingestion workflows
 \end{itemize}
 
 \subp{Platform Health Dashboard}
