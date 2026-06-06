@@ -75,24 +75,27 @@
 
 \subp{Forge Operation Center (FOC)}
 \begin{itemize}
-  \item Built a full-stack \textbf{React\,+\,Django\,+\,PostgreSQL} dashboard consolidating
-        \textbf{KPIs}, churn, and operational metrics across 30 products and 25K customers
-        — used by C-suite for monthly product accountability reviews and investor presentations
+  \item Built a full-stack \textbf{React\,+\,Django\,+\,PostgreSQL} dashboard with multiple pages
+        tailored for product owners, vertical heads, and C-suite — used in monthly
+        accountability reviews and international investor presentations
+  \item Co-designed a unified \textbf{PostgreSQL} schema normalising heterogeneous data from
+        \textbf{30} product sources — enabling consistent KPI, churn, and site-health
+        reporting across teams with vastly different underlying data models
   \item Engineered multi-source data ingestion using \textbf{Azure Service Bus, IoT Hub, Kafka,}
-        and scheduled \textbf{Celery} workers on \textbf{AKS} — aggregating KPIs, churn, and
-        performance metrics from 30 product sources across 282K sites and 5M assets
-  \item Implemented a \textbf{Redis} cache-aside layer for dashboard API endpoints — selectively
-        caching and invalidating relevant keys with cache-miss refill logic, reducing API
-        response times from \textbf{30--60\,sec to under 2\,sec}
+        and scheduled \textbf{Celery} workers on \textbf{AKS} — aggregating performance metrics
+        across \textbf{25K} customers, \textbf{282K} sites, and \textbf{5M} assets
+  \item Implemented a \textbf{Redis} \textbf{cache-aside} layer for dashboard API endpoints —
+        selectively caching and invalidating relevant keys with cache-miss refill logic,
+        reducing response times from 30--60\,sec to under \textbf{2\,sec}
   \item Built platform reliability infrastructure using \textbf{ELK} for log aggregation and
         automated alerting on pipeline failures — with 5-minute cron-based health checks
-        ensuring continuous monitoring across 40K gateways and all ingestion workflows
+        ensuring continuous monitoring across \textbf{40K} gateways and all ingestion workflows
 \end{itemize}
 
 \subp{Platform Health Dashboard}
 \begin{itemize}
-  \item Co-built a configurable service-health monitoring platform tracking 50 services across
-        8 modules with health states and time-series trends, ingesting from \textbf{InfluxDB,
+  \item Co-built a configurable service-health monitoring platform tracking \textbf{50} services
+        across 8 modules with health states and time-series trends, ingesting from \textbf{InfluxDB,
         Victoria Metrics, Azure IoT Hub, Databricks}, and custom APIs
   \item Designed zero-code service onboarding via a customised \textbf{Django admin} — SREs configure
         thresholds, alert rules, and data sources for new services across 4 business-region
