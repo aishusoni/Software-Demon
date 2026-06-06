@@ -186,3 +186,109 @@ Anyone can decode a JWT — it's just base64. Security comes from the signature 
 ### Interview One-liner
 
 > *"We use OAuth 2.0 Authorization Code flow with PKCE via MSAL. MSAL handles OIDC on the client — establishes who you are, stores tokens, silently refreshes every hour. The backend validates the JWT signature on every API call using Microsoft's public keys, extracts claims, and checks Azure AD group membership for authorization. Network layer (DNS + firewall) provides the first guard — only corporate devices reach the app."*
+
+---
+
+## API Authentication Mechanisms
+
+### Mental Model First
+
+```
+Bearer Token = HOW you send credentials (transport mechanism)
+OAuth 2.0    = FRAMEWORK that issues those tokens
+JWT          = FORMAT of the token
+
+OAuth produces Bearer tokens.
+Bearer tokens carry JWTs.
+These are not alternatives — they work together.
+```
+
+---
+
+### 1. Basic Auth
+```
+Authorization: Basic base64("username:password")
+```
+- Sends credentials on EVERY request
+- base64 is NOT encryption — anyone can decode it
+- Must always use HTTPS
+- Use only for: internal tools, scripts, legacy systems
+- Never for: public APIs, anything user-facing
+
+---
+
+### 2. Bearer Token (JWT)
+```
+Authorization: Bearer eyJhbGc...
+```
+- Token proves identity — "whoever bears this is allowed in"
+- Two types:
+  - **Opaque** = random string, server does DB lookup
+  - **JWT** = self-contained, server validates signature (no DB lookup)
+- JWT is the modern standard — stateless, scalable
+- What Honeywell/MSAL uses
+
+**JWT structure:**
+```
+Header.Payload.Signature
+base64  base64  cryptographic
+(algo) (claims)  signature
+```
+Anyone can decode — security comes from signature only Microsoft can produce.
+
+---
+
+### 3. API Key
+```
+X-API-Key: sk_live_abc123xyz
+```
+- Static secret issued to an application (not a user)
+- Identifies an app, not a person
+- Use for: third-party developer access (Stripe, Google Maps pattern)
+- Risk: static, no expiry — leaked = valid forever until rotated
+
+---
+
+### 4. OAuth 2.0 Client Credentials
+```
+POST /oauth/token
+{ grant_type: "client_credentials", client_id, client_secret }
+→ returns access token (Bearer JWT)
+```
+- Service authenticates as itself — no user involved
+- Use for: service-to-service, Celery workers, background jobs
+- Machine equivalent of Authorization Code flow
+
+---
+
+### 5. mTLS (Mutual TLS)
+- Both client AND server present certificates
+- Normal HTTPS: server proves identity to client only
+- mTLS: both sides prove identity
+- Use for: high security microservice mesh, zero-trust architecture
+- Overkill for user-facing APIs
+
+---
+
+### 6. Session Cookie
+```
+Set-Cookie: session_id=abc123; HttpOnly; Secure
+```
+- Server stores session state, gives client a cookie
+- Every request sends cookie automatically
+- vs JWT: session = server stores state (DB/Redis lookup per request)
+          JWT = stateless (no DB lookup, verify signature only)
+- JWT more scalable. Session easier to invalidate.
+
+---
+
+### Decision Framework
+
+```
+Human user (web/mobile)    → OAuth 2.0 Auth Code + PKCE → Bearer JWT
+Service/machine            → OAuth 2.0 Client Credentials → Bearer JWT
+Third-party developer      → API Key
+Internal tool/script       → Basic Auth (HTTPS only) or API Key
+High-security service mesh → mTLS
+Legacy/simple system       → Session Cookie
+```
