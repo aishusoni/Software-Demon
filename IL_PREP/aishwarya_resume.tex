@@ -40,7 +40,7 @@
 }
 
 \begin{document}
-\enlargethispage{2pt}
+\enlargethispage{20pt}
 
 %─── HEADER ──────────────────────────────────────────────────────
 \begin{minipage}[t]{0.57\linewidth}
@@ -94,15 +94,19 @@
 
 \subp{Platform Health Dashboard}
 \begin{itemize}
-  \item Co-built a configurable service-health monitoring platform tracking \textbf{50} services
-        across 8 modules with health states and time-series trends, ingesting from \textbf{InfluxDB,
-        Victoria Metrics, Azure IoT Hub, Databricks}, and custom APIs
-  \item Designed zero-code service onboarding via a customised \textbf{Django admin} — SREs configure
-        thresholds, alert rules, and data sources for new services across 4 business-region
-        tabs without any engineering intervention or code changes
-  \item Built an \textbf{OpenAI}-powered AI summary agent that surfaces service degradation patterns,
-        cross-module failure correlations, and recurring time-of-day incident trends over
-        user-selected time ranges for on-call SRE teams
+  \item Designed a fully config-driven architecture where services, data sources, thresholds,
+        and alert rules are managed via \textbf{Django admin} and \textbf{Azure Key Vault} —
+        enabling zero-code onboarding of new services with no engineering changes across
+        \textbf{50} services and 8 modules
+  \item Architected a 3-tier time-series storage strategy — per-minute snapshots with 1-day
+        retention, hourly and daily aggregates in separate tables — powering auto-granular
+        trend views and real-time threshold breach detection across all monitored services
+  \item Built a source-agnostic health ingestion layer with custom adapters for \textbf{InfluxDB,
+        Azure IoT Hub, Databricks,} and Honeywell IoT health-check APIs — with a 5-minute
+        \textbf{Celery} cron evaluating configurable thresholds and dispatching targeted email alerts
+  \item Built an \textbf{agentic OpenAI} RCA pipeline that traverses service dependency graphs
+        and retrieves historical RCA annotations to execute multi-step root-cause and
+        downstream impact analysis for on-call SRE teams
 \end{itemize}
 
 \subp{SaaSOps Portal}
@@ -113,9 +117,6 @@
   \item Developed a \textbf{React\,+\,Django} operations dashboard within a \textbf{microservices}
         architecture, tracking \textasciitilde1,000 tenant jobs with business-group filters, real-time
         status visibility, and failure monitoring across \textbf{Databricks} pipelines
-  \item Built the \textbf{React} frontend for the PSR automated test-report generation framework,
-        enabling QA teams to produce structured product test reports from raw inputs and
-        pass/fail data without manual compilation
 \end{itemize}
 
 %─── SKILLS ──────────────────────────────────────────────────────
