@@ -110,12 +110,15 @@
 
 \subp{SaaSOps Portal}
 \begin{itemize}
-  \item Built a centralised \textbf{Azure} service-principal secret management service with
-        \textbf{RBAC}-gated access, 30-day expiry alerting, naming conventions, and auto-propagation
-        to \textbf{Octopus} across 5 tenants and 100+ principals
-  \item Developed a \textbf{React\,+\,Django} operations dashboard within a \textbf{microservices}
-        architecture, tracking \textasciitilde1,000 tenant jobs with business-group filters, real-time
-        status visibility, and failure monitoring across \textbf{Databricks} pipelines
+  \item Engineered a platform-wide \textbf{RBAC} framework integrating \textbf{Azure AD} group
+        memberships with Django role-permission tables — enforcing per-feature visibility
+        and granular \textbf{CRUD}-level access controls across 4 SRE automation modules
+  \item Built a centralised \textbf{Azure} service-principal secret management portal with
+        \textbf{RBAC}-gated access, 30-day expiry alerting, and naming convention enforcement
+        across 5 tenants and 100+ principals
+  \item Developed a cron-driven deployment visibility dashboard polling \textbf{Octopus} to
+        surface live version, environment, and tenant mappings across 10--15 \textbf{AKS}
+        services with up to 4 environments and 5 tenants each
 \end{itemize}
 
 %─── SKILLS ──────────────────────────────────────────────────────
