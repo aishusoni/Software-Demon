@@ -96,14 +96,13 @@
 \begin{itemize}
   \item Designed a fully config-driven architecture where services, data sources, thresholds,
         and alert rules are managed via \textbf{Django admin} and \textbf{Azure Key Vault} —
-        enabling zero-code onboarding of new services with no engineering changes across
-        \textbf{50} services and 8 modules
+        enabling zero-code onboarding across \textbf{50} services and 8 modules
   \item Architected a 3-tier time-series storage strategy — per-minute snapshots with 1-day
         retention, hourly and daily aggregates in separate tables — powering auto-granular
-        trend views and real-time threshold breach detection across all monitored services
-  \item Built a source-agnostic health ingestion layer with custom adapters for \textbf{InfluxDB,
-        Azure IoT Hub, Databricks,} and Honeywell IoT health-check APIs — with a 5-minute
-        \textbf{Celery} cron evaluating configurable thresholds and dispatching targeted email alerts
+        trend views and real-time threshold breach detection
+  \item Built a source-agnostic ingestion layer with custom adapters for \textbf{InfluxDB,
+        Azure IoT Hub, Databricks,} and IoT health-check APIs — with a 5-minute
+        \textbf{Celery} cron evaluating configurable thresholds and dispatching email alerts
   \item Built an \textbf{agentic OpenAI} RCA pipeline that traverses service dependency graphs
         and retrieves historical RCA annotations to execute multi-step root-cause and
         downstream impact analysis for on-call SRE teams
@@ -135,9 +134,7 @@
 
 \achieve{National Standard Examination in Astronomy (NSEA) --- State Rank 2 in Gujarat}{2017}
 \achieve{JEE Advanced --- All India Rank 1050 among 1.5 million candidates (Top 0.07\%)}{2018}
-\achieve{Inter-IIT General Championship --- \textbf{Gold Medal}, Fine Arts Cup (1\textsuperscript{st} among 22 IITs)}{2021}
-\achieve{Inter-IIT General Championship --- \textbf{Silver Medal}, Fine Arts Cup;\;\textbf{Silver Medal}, Music Cup}{2022}
-\achieve{Inter-IIT General Championship --- \textbf{Gold Medal}, Music Cup (1\textsuperscript{st} among all IITs nationwide)}{2023}
+\achieve{Inter-IIT General Championship --- \textbf{Gold \& Silver Medals} in Fine Arts Cup and Music Cup, ranked in top 3 across 22 IITs}{2021--23}
 \achieve{IEEE ISIT --- Published \textit{``Bayesian Persuasion: From Persuasion toward Counter-suasion''} (2\textsuperscript{nd} author)}{2024}
 \achieve{Honeywell Performance Excellence Award --- \textbf{6$\times$ Silver} and \textbf{1$\times$ Bronze} for product \& platform engineering}{2025--26}
 
