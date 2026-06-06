@@ -434,3 +434,69 @@ public file → CDN URL
 private/expiring file → presigned URL
 metadata    → cache in Redis with TTL = paste expiry
 ```
+
+---
+
+## Authentication — Quick Reference
+
+**Mental model:**
+```
+OAuth 2.0   = framework → "are you authorised?"  → issues access token
+OIDC        = identity  → "who are you?"         → issues ID token
+Bearer      = transport → how token travels in header
+JWT         = format    → self-validating token format
+MSAL        = library   → orchestrates all of the above
+```
+
+**The three tokens:**
+| Token | Purpose | TTL | Where |
+|-------|---------|-----|-------|
+| Access token | Authorisation for API calls | 1hr | `Authorization: Bearer <token>` |
+| ID token | User identity (email, name, groups) | 1hr | Client only, not sent to API |
+| Refresh token | Get new tokens silently | 24hr+ | Browser storage |
+
+**MSAL flow (Honeywell):**
+```
+Hit app → MSAL checks token → expired? → redirect to Microsoft login (OIDC)
+→ get tokens → store in browser → API calls attach Bearer token automatically
+→ backend validates JWT signature using Microsoft public keys
+→ extract claims → check Azure AD groups → allow/deny
+```
+
+**Silent refresh:** Access token expires → MSAL intercepts 401 → uses refresh token → new access token → retry. User notices nothing.
+
+**API auth mechanisms:**
+| Mechanism | Use when |
+|-----------|---------|
+| Bearer JWT (OAuth) | Human users, modern APIs |
+| Client Credentials | Service-to-service, background jobs |
+| API Key | Third-party developer access |
+| Basic Auth | Internal tools, scripts (HTTPS only) |
+| mTLS | High-security microservice mesh |
+| Session Cookie | Legacy, simple web apps |
+
+---
+
+## Kong — API Gateway
+
+**Facade pattern:** Single entry point hiding all internal services. Client knows one URL, Kong routes internally.
+
+```
+Reverse Proxy < Load Balancer < API Gateway (Kong)
+```
+
+**Kong does:** JWT validation, rate limiting, routing, request transforms, central logging, analytics — all in one place before requests reach AKS.
+
+**Two routing layers:**
+```
+Kong          → which cluster?    (outer, cross-cutting concerns)
+Nginx Ingress → which service?    (inner, cluster-level)
+K8s Service   → which pod?        (innermost)
+```
+
+**Why facade matters:** Backend never exposed. Single place to patch auth/rate-limit. Change backend without clients knowing.
+
+**Full Honeywell path:**
+```
+Device → DNS → Firewall → Kong → AKS → Nginx Ingress → Pod
+```
