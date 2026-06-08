@@ -297,3 +297,178 @@ Read:   GET /abc123 → Redis cache → MISS→Postgres
         file public  → CDN URL
         file private → presigned S3 URL (expires with paste)
 ```
+
+---
+
+## Event-Driven Architecture (EDA)
+
+### EDA vs REST — Core Distinction
+
+```
+REST (synchronous):
+  Service A → POST /inventory/decrease → waits for response
+  Both services must be up simultaneously. A is blocked until B responds.
+
+EDA (asynchronous):
+  Service A → emits "order.placed" event → done, moves on
+  Service B, C, D each react independently when ready
+  A doesn't know or care who's listening
+```
+
+**Key differentiator: decoupling in time.**
+Producer emits and forgets. Consumer processes whenever ready. They never talk directly.
+
+---
+
+### Event vs Command vs Message
+
+| Term | Meaning | Tense | Can be rejected? |
+|------|---------|-------|-----------------|
+| **Event** | Something that happened | Past — "order was placed" | No — it's a fact |
+| **Command** | Instruction to do something | Future — "place this order" | Yes — can fail |
+| **Message** | Umbrella term | Either | Either |
+
+In EDA you mostly deal in events — immutable facts about what happened.
+
+---
+
+### Loose Coupling — What It Actually Means
+
+Services don't know about each other. Order Service doesn't import, call, or reference Inventory Service.
+
+```
+Tight coupling (REST) breaking:
+  → Inventory Service down = Order Service fails too
+  → Add Email Service = must modify Order Service code
+
+Loose coupling (EDA) benefit:
+  → Inventory Service down = event waits in queue, processed on recovery
+  → Add Email Service = just subscribe to topic, Order Service unchanged
+```
+
+---
+
+### Message Queue vs Event Broker
+
+| | Message Queue | Event Broker |
+|---|---|---|
+| Examples | Redis List, RabbitMQ, Service Bus | Kafka, Azure Event Hub |
+| Message consumed by | ONE consumer | MANY independent consumers |
+| After consumption | Deleted | Retained (configurable) |
+| Use when | Simple background jobs, point-to-point | Multiple consumers, audit log, replay |
+
+Celery + Redis = message queue pattern. Kafka = event broker pattern.
+
+---
+
+### Event Sourcing
+
+**Normal system:** Store current state only. History is lost.
+```
+orders table: { id: 123, status: "shipped" }  ← don't know previous states
+```
+
+**Event sourcing:** Store every event that ever happened. Current state = replay of all events.
+```
+events log:
+  order.created  → { id: 123, items: [...] }
+  order.paid     → { id: 123, amount: 500 }
+  order.shipped  → { id: 123, tracking: "xyz" }
+
+Current state = derived by replaying all events
+```
+
+**Benefits:** Complete audit trail, replay history, reprocess with new logic retroactively.
+
+**vs just publishing events:**
+- Publishing events = side effect of DB write. DB is still source of truth.
+- Event sourcing = event log IS the source of truth. DB state is just a projection.
+
+Kafka naturally supports event sourcing — it retains all events.
+
+---
+
+### Failure Modes
+
+**Publishing guarantees:**
+- At-most-once = may lose messages (fire and forget)
+- At-least-once = may duplicate (Kafka default → needs idempotent consumers)
+- Exactly-once = no loss, no duplicate (expensive, Kafka transactions)
+
+**When consumer goes down:**
+```
+Broker retains messages in partition/queue
+Consumer restarts → resumes from last committed offset
+Risk: consumer lag grows (backlog builds faster than consumed)
+Solution: monitor consumer lag, scale out consumers if needed
+```
+
+**When broker goes down:**
+```
+Producers can't publish → need retry + backoff
+Consumers halt → processing stops
+Solution: broker replication (Kafka replicas, Event Hub geo-redundancy)
+```
+
+**Consumer lag** = the real day-to-day failure mode. Consumer alive but slow. Fix: add consumers (up to partition count ceiling).
+
+---
+
+### Multi-Consumer Failure — Kafka Offset Model
+
+Each consumer group has its own **independent offset**. One group crashing never affects others.
+
+```
+Event: "order.placed" published at offset 100
+
+Service 1 group offset: 100 → processing normally ✅
+Service 3 group offset: 100 → processing normally ✅
+Service 5 group offset: 87  → crashed, stuck here ❌
+
+Kafka retains all messages
+Service 5 restarts → resumes from offset 87
+Services 1 and 3 unaffected throughout
+```
+
+**Critical:** Service 5 on restart will reprocess messages from offset 87. Some may have been partially processed before crash. Consumers MUST be idempotent — processing same message twice must be safe.
+
+DLQ applies when a message fails after N retries — moved to dead letter queue for manual inspection. Not for crashes (offsets handle that).
+
+---
+
+### Honeywell IoT Hub → Event Hub → Service Bus
+
+```
+IoT Hub     = central device connectivity platform
+              receives all device telemetry
+              temporary store, multiple consumers can read
+
+Event Hub   = high-throughput event streaming per product domain
+              FOC Event Hub, Building Intelligence Event Hub (separate concerns)
+              multiple consumer groups read independently
+
+Service Bus = reliable point-to-point messaging
+              at-least-once delivery, DLQ built in
+              used for lower volume, critical messages needing guaranteed delivery
+```
+
+Why multiple Event Hubs (not one): independent scaling, independent failure domains, different products don't interfere with each other.
+
+If Event Hub removed: IoT Hub has no consumers. Device data accumulates with nowhere to go. All downstream products lose their data feed.
+
+---
+
+### Kong AuthN vs App AuthZ (from Honeywell architecture)
+
+```
+Kong     = AuthN = "Is this token cryptographically valid?"
+           Uses Microsoft public keys to verify JWT signature
+           Rejects with 401 — never reaches AKS
+
+Your app = AuthZ = "Is this user allowed to do THIS specific thing?"
+           Reads claims (email, groups) from JWT
+           Checks business permissions (tenant, role, resource)
+           Rejects with 403 — valid token, wrong permissions
+```
+
+401 = Kong. 403 = your app. Two different layers, two different concerns.
