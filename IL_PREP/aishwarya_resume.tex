@@ -31,8 +31,8 @@
   \noindent\rule{\textwidth}{0.4pt}\vspace{4pt}%
 }
 
-% Sub-project label
-\newcommand{\subp}[1]{\vspace{3pt}\noindent\textbf{#1:}\vspace{0pt}}
+% Sub-project label with subtitle
+\newcommand{\subp}[2]{\vspace{3pt}\noindent\textbf{#1:}\\[-2pt]\noindent\textit{#2}\vspace{0pt}}
 
 % Achievement with dotfill — year right
 \newcommand{\achieve}[2]{%
@@ -73,7 +73,7 @@
 \noindent\textbf{Honeywell Connected Enterprise (HCE)} \hfill Bengaluru, India\\
 \textit{Software Development Engineer 2} \hfill \textit{Jul 2023\;--\;Present}
 
-\subp{Forge Operation Center (FOC)}
+\subp{Forge Operation Center (FOC)}{An executive dashboard consolidating product KPIs and operational metrics for C-suite and investor visibility}
 \begin{itemize}
   \item Built a full-stack \textbf{React\,+\,Django\,+\,PostgreSQL} dashboard with multiple pages
         tailored for product owners, vertical heads, and C-suite — used in monthly
@@ -92,7 +92,7 @@
         ensuring continuous monitoring across \textbf{40K} gateways and all ingestion workflows
 \end{itemize}
 
-\subp{Platform Health Dashboard}
+\subp{Platform Health Dashboard}{A configurable health monitoring platform with real-time service tracking, alerting, and AI-powered incident analysis}
 \begin{itemize}
   \item Designed a fully config-driven architecture where services, data sources, thresholds,
         and alert rules are managed via \textbf{Django admin} and \textbf{Azure Key Vault} —
@@ -108,7 +108,7 @@
         downstream impact analysis for on-call SRE teams
 \end{itemize}
 
-\subp{SaaSOps Portal}
+\subp{SaaSOps Portal}{A self-service portal centralising secret management, deployment tracking, and operational tooling for platform teams}
 \begin{itemize}
   \item Engineered a platform-wide \textbf{RBAC} framework integrating \textbf{Azure AD} group
         memberships with Django role-permission tables — enforcing per-feature visibility
