@@ -472,3 +472,78 @@ Your app = AuthZ = "Is this user allowed to do THIS specific thing?"
 ```
 
 401 = Kong. 403 = your app. Two different layers, two different concerns.
+
+---
+
+## Change Data Capture (CDC)
+
+### What It Is
+CDC tracks every change (INSERT, UPDATE, DELETE) in your database and streams those changes to other systems in real time.
+
+```
+Database row changes
+      ↓
+CDC reads database write-ahead log (WAL)
+      ↓
+Publishes change event to Kafka:
+  { op: "UPDATE", table: "orders",
+    before: { status: "pending" },
+    after:  { status: "shipped" } }
+      ↓
+Downstream systems consume (Elasticsearch, cache, other services)
+```
+
+### Why CDC Exists — Problems It Solves
+
+**Problem 1 — Keeping systems in sync (DB → Elasticsearch)**
+```
+Without CDC (polling): SELECT * FROM products WHERE updated_at > last_check
+  → delayed, misses deletes, hammers DB
+
+With CDC: every change streams instantly → Elasticsearch always in sync
+```
+
+**Problem 2 — Cache invalidation**
+DB row changes → CDC event → automatically invalidate Redis cache entry. No app code needed.
+
+**Problem 3 — Microservice data sync**
+Service A owns User table. Service B needs user data.
+CDC streams User table changes to Kafka → Service B consumes. No direct API calls.
+
+**Problem 4 — Audit trail**
+Complete immutable history of every data change, who changed what, before/after values.
+
+### CDC vs Application Event Publishing
+```
+App publishing:  Save to DB → emit event in code
+  Problem: DB save succeeds, event publish fails → systems out of sync (dual write problem)
+
+CDC:  Save to DB → CDC reads WAL → publishes event
+  WAL write and CDC read are atomic — if it's in the WAL, CDC publishes it
+  No dual write problem → more reliable
+```
+
+### Common CDC Tools
+| Tool | Works with | Publishes to |
+|------|-----------|-------------|
+| Debezium | Postgres, MySQL, MongoDB | Kafka |
+| AWS DMS | Most DBs | Kafka, S3, Redshift |
+| Azure Data Factory | Most DBs | Event Hub, Blob |
+
+### ELK Logs vs CDC — Not the Same
+```
+ELK (log aggregation):
+  Source: application stdout/stderr
+  Purpose: debugging, monitoring, alerting
+  Format: log lines
+
+CDC:
+  Source: database WAL
+  Purpose: data sync, audit trail, cache invalidation
+  Format: structured change events
+```
+
+Your AKS → ELK setup is log aggregation — pods write logs, Filebeat ships to Elasticsearch, Kibana for search. CDC would be a separate pipeline tapping the DB directly.
+
+### One-liner
+> *"CDC reads the database write-ahead log and streams every data change as an event. More reliable than application-level publishing — eliminates the dual write problem. Debezium + Kafka is the standard stack."*
