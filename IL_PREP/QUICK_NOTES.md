@@ -500,3 +500,122 @@ K8s Service   → which pod?        (innermost)
 ```
 Device → DNS → Firewall → Kong → AKS → Nginx Ingress → Pod
 ```
+
+---
+
+## Proxies
+
+**Forward proxy** = in front of client → hides client from server
+- Corporate filtering, VPN, anonymity
+- Client configures it
+
+**Reverse proxy** = in front of server → hides server from client
+- Load balancing, TLS termination, routing, security
+- Server configures it, client never knows
+
+**DNS vs proxy:**
+DNS → resolves domain to IP (before connection)
+Proxy → routes request to correct backend (after connection)
+
+---
+
+## HTTP Versions
+
+```
+HTTP/1.0  → new TCP connection per request (slow)
+HTTP/1.1  → persistent connections (keep-alive), sequential requests
+            HOL blocking: slow request blocks everything behind it
+HTTP/2    → multiplexing (parallel streams, one TCP connection)
+            fixes HTTP HOL, still has TCP HOL blocking
+HTTP/3    → QUIC (UDP-based), per-stream loss recovery
+            fixes TCP HOL, 0-RTT reconnect, connection migration
+```
+
+**Persistent connections:** REST APIs use these by default. Multiple requests reuse same TCP connection transparently.
+
+**WebSockets vs HTTP:**
+- HTTP = client always initiates, request→response
+- WebSocket = bidirectional, either side sends anytime
+- Upgrade: `101 Switching Protocols`
+
+---
+
+## TLS / SSL
+
+```
+TLS solves: encryption (nobody reads data) + authentication (real server)
+Uses both:  asymmetric (key exchange) + symmetric (actual data)
+Certificate: domain + public key + CA signature + expiry
+CA chain:   browser trusts Root CA → trusts everything it signed
+```
+
+**TLS 1.2 handshake:** 2 RTT — ClientHello → Certificate → Key Exchange → Finished
+
+**TLS 1.3:** 1 RTT, 0-RTT reconnect, forward secrecy mandatory, weak ciphers removed
+
+**Forward secrecy:** ephemeral session keys — private key stolen later can't decrypt past sessions
+
+**TLS termination:** Kong handles HTTPS → forwards plain HTTP internally to pods
+- Centralised cert management
+- App pods do business logic only
+
+---
+
+## Change Data Capture (CDC)
+
+**What:** Streams every DB change (INSERT/UPDATE/DELETE) by reading the write-ahead log (WAL)
+
+**vs app event publishing:**
+- App publishing = save to DB + emit event → dual write problem (one can fail)
+- CDC = reads WAL directly → atomic, no dual write problem
+
+**Use for:** DB → Elasticsearch sync, cache invalidation, microservice data sync, audit trail
+
+**Stack:** Debezium + Kafka (most common)
+
+**vs ELK logs:** ELK = app stdout logs for debugging. CDC = DB change stream for data sync. Different sources, different purposes.
+
+---
+
+## EDA Quick Reference
+
+```
+EDA vs REST:    REST = synchronous, both services must be up
+                EDA  = async, producer emits and forgets, decoupled in time
+
+Event          = something that happened (past, immutable fact)
+Command        = instruction to do something (future, can be rejected)
+Message        = umbrella term for both
+
+Loose coupling = services don't know each other exist
+                 add new consumer without touching producer
+
+Queue vs Broker:
+  Queue  = 1 message → 1 consumer → deleted (Redis, RabbitMQ)
+  Broker = 1 event → N consumers → retained (Kafka, Event Hub)
+
+Event sourcing = event log IS source of truth, state = replay of events
+                 vs normal = DB is source of truth, events are side effects
+
+Kafka offset model:
+  Each consumer group has independent offset
+  One group crashing doesn't affect others
+  On restart: resumes from last committed offset
+  Must be idempotent — same message may be processed twice
+```
+
+---
+
+## API Gateway Landscape
+
+```
+Kong        → self-hosted, open source, plugin ecosystem, K8s (Honeywell)
+AWS API GW  → managed, AWS ecosystem, Lambda integration
+Azure APIM  → managed, Azure ecosystem, developer portal, deep AD integration
+Apigee      → GCP, enterprise analytics
+Traefik     → K8s-native, auto-discovers services
+Envoy       → service mesh data plane (Istio)
+
+North-South = external → your services → API Gateway
+East-West   = service → service (internal) → Service Mesh (Istio)
+```
