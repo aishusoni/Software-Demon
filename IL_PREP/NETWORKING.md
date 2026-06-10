@@ -292,3 +292,235 @@ Internal tool/script       → Basic Auth (HTTPS only) or API Key
 High-security service mesh → mTLS
 Legacy/simple system       → Session Cookie
 ```
+
+---
+
+## Forward Proxy vs Reverse Proxy
+
+```
+Forward Proxy  = sits in front of CLIENT  → hides client from server
+Reverse Proxy  = sits in front of SERVER  → hides server from client
+```
+
+### Forward Proxy
+```
+Client → Forward Proxy → Internet → Server
+Server sees: proxy IP, not client IP
+```
+- Configured on CLIENT side
+- Use: corporate filtering (Honeywell monitors outbound traffic), VPNs, anonymity
+- Your Honeywell laptop → corporate proxy → internet
+
+### Reverse Proxy
+```
+Client → Reverse Proxy → Backend Servers
+Client sees: proxy IP/domain only, never backend IPs
+```
+- Configured on SERVER side, client doesn't know it exists
+- Every large website uses one — Google, Netflix, all of them
+- Use: load balancing, TLS termination, caching, routing, security
+- Examples: Nginx, Kong, AWS ALB, Traefik
+
+**The family tree:**
+```
+Reverse Proxy      → forwards requests, hides backends
+Load Balancer      → reverse proxy + traffic distribution
+API Gateway        → reverse proxy + auth + rate limiting + routing + plugins
+CDN                → reverse proxy + geographically distributed caching
+K8s Ingress        → reverse proxy inside a cluster
+```
+All of these ARE reverse proxies with extra capabilities.
+
+### DNS vs Proxy — When Each Comes In
+```
+1. DNS resolves domain → IP (happens BEFORE connection)
+2. TCP connection established to that IP (reverse proxy's IP)
+3. Reverse proxy routes to correct backend
+```
+DNS = phonebook (domain → IP). Reverse proxy = receptionist (routes to correct server).
+
+---
+
+## HTTP Versions — Persistent Connections, Multiplexing, QUIC
+
+### The Connection Problem
+
+Every HTTP request needs a TCP connection. TCP handshake = 1 RTT (round trip). At 150ms to a US server = 150ms wasted before data flows.
+
+### HTTP/1.0 — New connection per request
+```
+Open TCP → GET /index.html → response → CLOSE
+Open TCP → GET /style.css  → response → CLOSE
+Open TCP → GET /logo.png   → response → CLOSE
+30 resources = 30 TCP handshakes = extremely slow
+```
+
+### HTTP/1.1 — Persistent Connections (Keep-Alive)
+```
+Open TCP (once)
+  → GET /index.html → response
+  → GET /style.css  → response
+  → GET /logo.png   → response
+Close TCP
+```
+One handshake, many requests. **Default in HTTP/1.1.**
+REST APIs use this — multiple API calls reuse the same TCP connection transparently.
+
+**Problem: Head-of-line blocking**
+Requests are sequential on one connection. Slow first request blocks everything behind it.
+```
+GET /slow-api  (200ms) → must complete before...
+GET /fast-api  (10ms)  → ...this can start
+Total: 210ms sequential
+```
+Browser workaround: open 6 parallel TCP connections per domain.
+
+### HTTP/2 — Multiplexing
+One TCP connection, multiple **streams** simultaneously. Responses arrive in any order.
+```
+Stream 1: GET /api/users    → response (200ms)
+Stream 2: GET /api/orders   → response (50ms)  ← arrives first
+Stream 3: GET /api/products → response (100ms)
+Total: 200ms (limited by slowest, not sum)
+```
+
+**Other HTTP/2 features:**
+- **Header compression (HPACK)** — don't repeat same headers every request
+- **Binary protocol** — more efficient than text
+- **Server push** — server sends resources before client asks
+
+**Remaining problem: TCP head-of-line blocking**
+One lost TCP packet blocks ALL streams (TCP guarantees ordered delivery). HTTP/2 over bad networks can be worse than HTTP/1.1.
+
+### HTTP/3 — QUIC (UDP-based)
+Replaces TCP with **QUIC** — built on UDP, implements streams at transport layer.
+
+```
+Lost packet in Stream 1 → only Stream 1 waits
+Stream 2, 3 unaffected ✅
+```
+
+**Other QUIC features:**
+- **1 RTT** first connection (vs 2-3 RTT for HTTP/2 + TLS)
+- **0-RTT reconnection** — client sends data immediately on reconnect
+- **Connection migration** — connection survives network switch (WiFi → 4G)
+  Connection ID-based, not IP+port based. Perfect for mobile.
+
+### Comparison Table
+| Feature | HTTP/1.1 | HTTP/2 | HTTP/3 |
+|---------|----------|--------|--------|
+| Transport | TCP | TCP | QUIC (UDP) |
+| Persistent connections | ✅ | ✅ | ✅ |
+| Multiplexing | ❌ | ✅ | ✅ |
+| HTTP HOL blocking | ❌ | ✅ fixed | ✅ fixed |
+| TCP HOL blocking | ❌ | ❌ | ✅ fixed |
+| Header compression | ❌ | ✅ HPACK | ✅ QPACK |
+| 0-RTT reconnect | ❌ | ❌ | ✅ |
+| Connection migration | ❌ | ❌ | ✅ |
+
+### WebSockets vs HTTP Persistent Connections
+```
+HTTP persistent:  client always initiates, request→response pattern
+WebSocket:        bidirectional, either side sends anytime
+
+WebSocket upgrade:
+Client: GET /chat + Upgrade: websocket
+Server: 101 Switching Protocols → now full duplex
+```
+Use WebSockets for: chat, live notifications, real-time dashboards, collaborative editing.
+
+---
+
+## TLS / SSL
+
+### SSL vs TLS
+SSL is deprecated (broken). TLS replaced it. TLS 1.2 widely used, TLS 1.3 is current standard.
+"SSL certificate" = "TLS certificate" in casual usage. Same thing.
+
+### What TLS Solves
+```
+Without TLS: POST /login { password: "secret" } → readable by anyone on network
+TLS solves:
+  1. Encryption    → nobody can read data in transit
+  2. Authentication → you're talking to the REAL server, not an impostor
+```
+
+### Symmetric vs Asymmetric Encryption
+```
+Symmetric:   same key encrypts + decrypts. Fast. Problem: how to share the key?
+Asymmetric:  public key encrypts, private key decrypts. Slow. Solves key sharing.
+
+TLS uses both:
+  Asymmetric → securely exchange a symmetric session key
+  Symmetric  → encrypt actual data (fast)
+```
+
+### Certificate + Certificate Authority (CA)
+A certificate says: "this public key belongs to honeywell.com, verified by DigiCert"
+
+Contains: domain name, server's public key, CA signature, expiry date.
+
+Browser ships with list of trusted CAs. CA verifies domain ownership and signs cert.
+```
+Root CA (DigiCert) → signs Intermediate CA → signs honeywell.com cert
+Chain of trust: browser trusts Root CA → trusts everything it signed
+```
+Root CA private key kept offline in vault. Intermediate CA does day-to-day signing.
+
+### TLS 1.2 Handshake (2 RTT)
+```
+Client → ClientHello (TLS version, cipher suites, client random)
+Server → ServerHello (chosen cipher, server random) + Certificate
+Client → verifies cert (trusted CA? correct domain? not expired?)
+Client → PreMasterSecret (encrypted with server's public key)
+Both   → derive session key = f(client random + server random + premaster secret)
+Both   → Finished (encrypted) — handshake complete
+Data flows encrypted with symmetric session key
+```
+Session key is NEVER transmitted — derived independently by both sides.
+
+### TLS 1.3 Improvements
+- **1 RTT** (vs 2 RTT) — client sends key share upfront
+- **0-RTT resumption** — reconnect with zero round trips
+- **Forward secrecy mandatory** — ephemeral keys per session
+  - If private key later stolen → past sessions still safe
+- **Removed weak ciphers** — smaller attack surface
+
+### TLS Termination (Your Honeywell Architecture)
+```
+Client → HTTPS (encrypted) → Kong → HTTP (unencrypted, internal) → Pod
+```
+Kong handles TLS — app pods do business logic only.
+Benefits: centralised cert management, L7 routing possible, no crypto overhead on pods.
+
+### TLS One-liner
+> *"TLS = asymmetric crypto to securely exchange a symmetric session key, then symmetric crypto for data. Certificate proves server identity via CA chain of trust. TLS 1.3 = 1 RTT, forward secrecy, 0-RTT reconnect. Terminates at Kong in our architecture."*
+
+---
+
+## API Gateway Landscape
+
+| Gateway | Type | Best for |
+|---------|------|---------|
+| Kong | Self-hosted, open source | Enterprise control, K8s, plugin ecosystem |
+| AWS API Gateway | Managed (AWS) | AWS ecosystem, Lambda integration, zero ops |
+| Azure APIM | Managed (Azure) | Azure ecosystem, developer portal, deep AD integration |
+| Apigee (GCP) | Managed (GCP) | Enterprise analytics, API monetization |
+| Traefik | Self-hosted, K8s-native | K8s auto-discovery, simpler than Kong |
+| Nginx | Self-hosted | Lightweight reverse proxy, basic routing |
+| Envoy | Data plane | Service mesh (Istio), east-west traffic |
+
+### North-South vs East-West Traffic
+```
+North-South = external clients → your services
+  → API Gateway handles this (Kong, APIM, AWS API GW)
+
+East-West = service to service (internal)
+  → Service mesh handles this (Istio + Envoy, Linkerd)
+```
+
+### Honeywell Stack
+```
+Internet → Azure Firewall → Kong (north-south gateway)
+        → AKS → Nginx Ingress (cluster routing) → Pods
+```
