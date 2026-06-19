@@ -379,3 +379,126 @@ Application-level auth (groups, permissions)
       ↓
 Business logic → Response
 ```
+
+---
+
+## 12. Docker — Local Development + Containerization
+
+### Core Mental Model
+```
+Dockerfile  → recipe (instructions to build an image)
+Image       → built artifact (read-only, layered)
+Container   → running instance of an image
+```
+
+### Dockerfile — Backend (Python/Django)
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .           # copy this FIRST
+RUN pip install -r requirements.txt  # cached if requirements unchanged
+COPY . .                          # code changes don't invalidate pip cache
+EXPOSE 8000
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+```
+`0.0.0.0` not `127.0.0.1` — localhost inside container = unreachable from outside.
+Layer caching: copy requirements before code — pip layer reused when only code changes.
+
+### Dockerfile — Frontend (React, multi-stage)
+```dockerfile
+FROM node:20 AS build          # stage 1: heavy build environment
+WORKDIR /app
+COPY package*.json .
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine               # stage 2: tiny runtime, just static files
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+Multi-stage: final image carries only built output, not 1GB of node_modules.
+
+### docker-compose.yml — Full Stack
+```yaml
+version: '3.8'
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: myapp
+    volumes:
+      - pgdata:/var/lib/postgresql/data    # data survives container restarts
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://postgres:secret@db:5432/myapp
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+
+volumes:
+  pgdata:
+```
+
+CRITICAL: Service names ARE hostnames inside Docker network.
+Backend connects to DB via `db:5432`, NOT `localhost:5432`.
+
+### .dockerignore
+```
+node_modules
+.git
+__pycache__
+*.pyc
+.env
+```
+Without this: builds include node_modules (~1GB), massively slow.
+
+### Key Commands
+```bash
+docker-compose up --build       # build images + start everything
+docker-compose up -d            # run in background
+docker-compose down             # stop everything
+docker-compose logs backend     # logs for one service
+docker exec -it <id> bash       # shell into running container (debug)
+docker system prune -a          # clean up unused images/containers
+docker ps                       # list running containers
+docker images                   # list all images
+```
+
+### Production Deployment Path
+```
+1. Local: docker-compose up --build  (verify it works)
+2. Push code to GitHub
+3. CI (GitHub Actions): run tests → build image → push to registry
+4. Registry: Docker Hub / ghcr.io (free) vs JFrog (enterprise)
+5. Deploy:
+   Simple  → Render/Railway/Fly.io (connect repo, auto-deploy, free HTTPS)
+   VM      → EC2/DigitalOcean, SSH, docker-compose up -d, Nginx + certbot SSL
+   K8s     → image → registry → kubectl apply → Ingress → Service → Pod
+6. Secrets: .env locally (gitignored), platform secret manager in prod
+7. DNS: A record → VM IP, or CNAME → platform URL
+8. SSL: Let's Encrypt (certbot) for VM, automatic on managed platforms
+```
+
+### AI-Assisted Coding Round Tips
+- Prompt incrementally, not in one giant ask — review each piece before continuing
+- Read every line before accepting — know why each line is there
+- Let AI handle boilerplate (CRUD, Dockerfiles, component shells)
+- Use your brain for edge cases, error handling, business logic
+- Ask AI to generate test cases — shows engineering maturity
+- Say prompts out loud if observed — interviewers evaluate how you direct the tool
+- `/cost` or `/usage` in Claude Code to track token consumption
+- `/compact` between major milestones to free context
+- `/model sonnet` for most work, `/model opus` for complex architecture
