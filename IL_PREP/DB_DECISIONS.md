@@ -241,3 +241,104 @@ Never just say "I'd use Cassandra." Always say:
 | Search-heavy | Postgres + Elasticsearch + Redis |
 | IoT / metrics | IoT Hub + Event Hub + TimescaleDB + Blob |
 | Ed-tech platform | Postgres + Redis + S3 + Kafka + Elasticsearch |
+
+---
+
+## Database Normalization — 1NF Through 5NF
+
+Using one example throughout: University Course Enrollment.
+
+### Starting Point — Unnormalized (UNF)
+```
+StudentID:1, StudentName:Aish, Courses:[(Math,ProfA,Room101),(Physics,ProfB,Room102)]
+```
+One row holds a list of courses — nested, repeating.
+
+### 1NF — Atomic values, no repeating groups
+Flatten — one row per (student, course):
+
+| StudentID | StudentName | CourseID | CourseName | InstructorID | InstructorOffice | Grade |
+|---|---|---|---|---|---|---|
+| 1 | Aish | C1 | Math | I1 | Room101 | A |
+| 1 | Aish | C2 | Physics | I2 | Room102 | B |
+
+PK: (StudentID, CourseID). Every cell is atomic. But heavy redundancy.
+
+### 2NF — No partial dependency (non-key attr must depend on WHOLE composite key)
+```
+StudentName     → depends on StudentID alone     ❌ partial
+CourseName      → depends on CourseID alone      ❌ partial
+InstructorID    → depends on CourseID alone      ❌ partial
+Grade           → depends on (StudentID+CourseID) ✅ correct
+```
+Decompose:
+```
+Student(StudentID, StudentName)
+Course(CourseID, CourseName, InstructorID, InstructorOffice)
+Enrollment(StudentID, CourseID, Grade)
+```
+
+### 3NF — No transitive dependency (non-key attr depends directly on key, not via another non-key)
+In Course table: `CourseID → InstructorID → InstructorOffice` — two hops, not one.
+Problem: if instructor changes office, must update every course row → inconsistency risk.
+Decompose:
+```
+Course(CourseID, CourseName, InstructorID)
+Instructor(InstructorID, InstructorOffice)
+```
+
+### BCNF — Every determinant must be a candidate key
+3NF only checks non-key attrs. BCNF is stricter — applies to ALL functional dependencies.
+
+Section(StudentID, CourseID, Instructor) — two candidate keys exist:
+(StudentID, CourseID) and (StudentID, Instructor)
+
+But: `Instructor → CourseID` exists, and {Instructor} alone is NOT a candidate key → BCNF violated.
+Result: "ProfA teaches Math" stored in every student row — redundancy.
+
+Decompose:
+```
+InstructorCourse(Instructor, CourseID)    ← ProfA→Math stored ONCE
+StudentInstructor(StudentID, Instructor)
+```
+
+### 4NF — No multivalued dependency (independent multivalued facts in same table = cartesian product)
+Course has: 2 instructors (ProfA, ProfB) and 2 books (Book1, Book2), completely independent.
+
+CourseInstructorBook table forces 4 rows (2×2 combinations):
+```
+Math | ProfA | Book1
+Math | ProfA | Book2   ← ProfA-Book2 relationship is MANUFACTURED, not real
+Math | ProfB | Book1
+Math | ProfB | Book2
+```
+Decompose:
+```
+CourseInstructor(CourseID, Instructor)
+CourseBook(CourseID, Book)
+```
+2+2=4 rows, no spurious combinations.
+
+### 5NF — No join dependency (ternary relationships needing 3-way join)
+Business rule: "Instructor uses Book for Course only if: they teach Course AND Course uses Book AND Instructor has used Book before."
+
+Three independent pairwise tables:
+```
+Teaches(Instructor, Course)
+Uses(Course, Book)
+InstructorBook(Instructor, Book)
+```
+Joining only two tables produces spurious rows. All three required for correct result. This IS 5NF.
+Rare in practice — only appears with true three-way business constraints.
+
+### Summary
+| Form | Fixes | Rule |
+|------|-------|------|
+| 1NF | Repeating groups | Atomic values only |
+| 2NF | Partial dependency | Non-key attrs depend on whole composite key |
+| 3NF | Transitive dependency | Non-key attrs depend directly on key |
+| BCNF | Non-candidate-key determinants | Every determinant is a candidate key |
+| 4NF | Multivalued dependency | Independent multivalued facts → separate tables |
+| 5NF | Join dependency | Ternary relationships → 3 separate tables |
+
+Production: target 3NF/BCNF. Deliberate denormalization is common for read performance.
