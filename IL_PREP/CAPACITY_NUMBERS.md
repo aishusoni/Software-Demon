@@ -251,3 +251,80 @@ Memory/thread:   ~1-2MB
 Memory/WS conn:  ~2-10KB
 S3 GET rate:     5,500/sec per prefix
 ```
+
+---
+
+## Thread Pools
+
+### What a Thread Is
+A thread is a unit of execution within a process. Multiple threads share the same memory space. While Thread 1 waits for a DB response (I/O wait, CPU idle), Thread 2 can use the CPU — threads enable concurrency during waits.
+
+### Why Thread Pool (Not New Thread Per Request)
+Creating a thread isn't free:
+- ~1-2MB stack memory per thread
+- OS scheduler overhead for each new thread
+- 10,000 concurrent requests = 10-20GB just for thread stacks
+
+Thread pool solution: pre-create N threads at startup, reuse them.
+```
+Pool of 50 threads:
+  Request arrives → grab idle thread → handle → return thread to pool
+  All 50 busy → request 51 WAITS in queue until one frees up
+```
+
+### Thread Pool = Your Concurrency Ceiling
+50 threads = 50 requests in flight max, regardless of incoming traffic.
+
+**This is the thread starvation root cause:**
+```
+SendGrid down (30s timeout per request):
+  Thread 1-50 → all stuck waiting on SendGrid
+  Request 51+ → no threads available → queue grows → system appears dead
+  
+Circuit breaker fixes: converts 30s waits → 1ms fails → threads released immediately
+```
+
+### Sizing Formula
+```
+CPU-bound work:   threads ≈ number of CPU cores
+                  (more threads = context switching overhead, no benefit)
+
+I/O-bound work:   threads = cores × (1 + wait_time/compute_time)
+  Example: 4 cores, 90% waiting 10% compute:
+  threads = 4 × (1 + 9) = 40 threads optimal
+```
+Web servers are I/O-bound → run 50-200 threads on 2-4 core machines.
+
+### Thread Pool Sizing in Practice
+```
+Gunicorn (Python):    workers × threads = concurrency
+                      e.g., 4 workers × 10 threads = 40 concurrent requests
+
+DB connection pool:   MUCH smaller than thread count
+                      200 app threads, 20 DB connections (PgBouncer)
+                      DB connections are expensive — pool and share them
+
+Celery workers:       --concurrency=10 → 10 tasks simultaneously
+                      11th task waits in Redis queue
+
+Within a request:     ThreadPoolExecutor for parallel sub-calls
+                      3 microservice calls in parallel → max(latency) not sum
+```
+
+### Threads vs Processes vs Async
+```
+Threads (Spring, Django):  OS threads, share memory, 500-2K RPS
+Processes (Gunicorn, Celery prefork): separate memory, heavier, more isolated
+Async (Node, FastAPI):     single thread, non-blocking I/O, 5-10K RPS
+                           thousands of concurrent connections, one thread
+```
+Async avoids thread overhead entirely for I/O-bound — why async is faster.
+
+### Everything Else Is Protecting the Thread Pool
+```
+Rate limiter   → prevents overwhelming thread pool with too many requests
+Circuit breaker → prevents thread pool exhaustion from slow dependencies
+Connection pool → manages DB connections shared across threads
+HPA (K8s)      → scales pods (each with their own thread pool) based on load
+Load balancer  → distributes across multiple pods, each with their own pool
+```
