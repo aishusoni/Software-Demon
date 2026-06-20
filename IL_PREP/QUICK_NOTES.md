@@ -619,3 +619,107 @@ Envoy       → service mesh data plane (Istio)
 North-South = external → your services → API Gateway
 East-West   = service → service (internal) → Service Mesh (Istio)
 ```
+
+---
+
+## WSGI / ASGI / Gunicorn — Quick Reference
+
+```
+WSGI  = sync contract between server and Python framework
+ASGI  = async successor — WebSockets, long-lived connections
+Gunicorn = WSGI server (manages worker processes)
+Uvicorn  = ASGI server (async)
+Django's runserver = dev-only, not production
+```
+```
+Browser → Nginx (TLS, static) → Gunicorn (workers) → application() [WSGI contract] → Django
+```
+Standard CRUD app → WSGI + Gunicorn sufficient. WebSockets/real-time → need ASGI.
+
+---
+
+## Threads vs Workers vs CPU Cores (GIL)
+
+```
+CPU core = hardware, real parallel execution limit
+Worker   = process, own memory, own GIL, TRUE parallelism (Gunicorn --workers)
+Thread   = inside a process, shares memory, GIL-limited
+
+GIL: only 1 thread/process executes Python bytecode at once
+  Released during I/O wait → threads help for I/O-bound work
+  Never released during CPU work → threads useless for CPU-bound
+
+CPU-bound → ProcessPoolExecutor or Celery, NOT ThreadPoolExecutor
+I/O-bound → ThreadPoolExecutor is correct
+```
+
+Gunicorn sizing:
+```
+I/O-bound: workers = (2×cores)+1
+CPU-bound: workers ≈ cores (no 2x multiplier — no wait time to hide behind)
+```
+
+---
+
+## Why Redis Is Fast (4 Secrets)
+
+```
+1. In-memory     → RAM ~100ns vs disk ~10ms (100,000x faster)
+2. Single-thread → no locks, no race conditions, atomic by default
+3. epoll/kqueue  → one thread monitors thousands of sockets, processes
+                   only ready ones — network I/O is the real bottleneck,
+                   not command execution (microseconds vs ms round trip)
+4. Optimized C structures + selective threading (6.0+ I/O threads,
+                   command execution still single-threaded)
+
+Caveat: KEYS * blocks the ENTIRE server (no second thread to pick up slack)
+```
+
+---
+
+## How It All Connects — Throughput Across Layers
+
+```
+Throughput inversely proportional to "real work per request":
+  CDN/LB/Redis  → near-zero work → millions / 100K+ RPS
+  App Server    → real business logic → hundreds-low-thousands RPS
+  Database      → heaviest work → 5,000-10,000 QPS
+
+"100K RPS per server" is real for CDN/LB/Redis — NEVER real for an
+app server doing actual business logic. "System handles 100K RPS"
+= fleet aggregate (many app instances), not one box.
+
+High throughput = minimize work per request (cache/CDN) +
+                   parallelize what remains (horizontal scaling)
+NOT: make one layer impossibly fast.
+```
+
+---
+
+## ThreadPoolExecutor Sizing — Quick Rules
+
+```
+Single request: max_workers ≤ actual task count, bounded by downstream
+                resource (DB connections, external API limits)
+
+Multi-request worst case:
+  max_workers_per_pool ≈ (available_db_connections - reserve) / gunicorn_workers
+
+Same pattern as Rate Limiter case study — centralize state (Redis)
+to enforce a real ceiling instead of trusting static worst-case math
+
+Bounded pool at max → graceful queue, no crash
+Unbounded threads at max → RuntimeError, OS refuses creation
+```
+
+---
+
+## CONN_MAX_AGE — Don't Confuse With Capacity
+
+```
+CONN_MAX_AGE=600 → 600 SECONDS (time DB connection stays open/reused)
+NOT a count of connections, NOT a request limit, NOT thread pool size
+
+Concurrent DB capacity = workers × threads (roughly), bounded by
+Postgres max_connections (default ~100)
+```
