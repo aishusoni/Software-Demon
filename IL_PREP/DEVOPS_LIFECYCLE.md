@@ -502,3 +502,134 @@ docker images                   # list all images
 - `/cost` or `/usage` in Claude Code to track token consumption
 - `/compact` between major milestones to free context
 - `/model sonnet` for most work, `/model opus` for complex architecture
+
+---
+
+## 13. Docker Compose — Deep Dive
+
+### Volumes — Why They Exist
+Containers are ephemeral — delete/recreate destroys data inside. Volumes persist data outside the container's lifecycle.
+```yaml
+volumes:
+  - pgdata:/var/lib/postgresql/data   # named volume — Docker manages location
+  - .:/app                            # bind mount — maps local folder (DEV ONLY, live reload)
+```
+Named volume = production pattern for DB data. Bind mount = dev-only convenience.
+
+### Networking — Service Names ARE Hostnames
+```
+Inside `web` container, connect to DB via: db:5432
+NOT localhost:5432 — Docker Compose creates internal DNS,
+each service reachable by its service name
+```
+This trips up almost everyone the first time.
+
+### `depends_on` Doesn't Wait for Readiness
+```yaml
+depends_on:
+  - db    # only controls START ORDER, NOT readiness
+```
+Postgres container starts but isn't ready to accept connections yet → web container may fail to connect.
+
+**Fix — healthcheck:**
+```yaml
+db:
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U postgres"]
+    interval: 5s
+    retries: 5
+web:
+  depends_on:
+    db:
+      condition: service_healthy   # NOW actually waits
+```
+
+### Lifecycle Commands
+```bash
+docker-compose build          # build images only
+docker-compose up -d          # build + start, detached
+docker-compose down           # stop + remove containers (volumes survive)
+docker-compose down -v        # also removes volumes — DATA GONE
+docker-compose logs -f web    # follow logs for one service
+docker-compose exec web bash  # shell into running container
+```
+
+---
+
+## 14. CDN vs WhiteNoise — Static File Serving
+
+```
+WhiteNoise: runs INSIDE your Django app, your Gunicorn process serves files
+  Use when: small app, low traffic, simplicity > shaving milliseconds
+
+CDN: separate globally distributed network, caches files near each user
+  Use when: global users, high traffic, large assets, offload bandwidth
+
+WhiteNoise: User → YOUR single server (every request)
+CDN:        User → nearest edge (cached after first fetch) → origin only on MISS
+```
+For a small app: WhiteNoise is correct, proportionate. CDN now = solving a problem you don't have yet.
+
+---
+
+## 15. WSGI, ASGI, Gunicorn — Full Explanation
+
+### Web Server vs Application Server (terminology precision)
+```
+"Web server"          = traditionally Nginx/Apache — serves static files,
+                         handles raw connections efficiently
+"Application server"  = Gunicorn/uWSGI — runs YOUR application code per request
+```
+Colloquially "web server" is used loosely for both. Precise term for Gunicorn: WSGI application server.
+
+### WSGI — The Contract, Not a Program
+WSGI = Web Server Gateway Interface. A SPECIFICATION — any WSGI-compliant server can run any WSGI-compliant Python framework.
+```python
+# What Django generates for you in wsgi.py:
+application = get_wsgi_application()
+# Conceptually: def application(environ, start_response): ...
+```
+Because it's a standard contract, the web server and framework don't need to know about each other beyond this interface.
+
+### Gunicorn — An Actual Program Implementing WSGI
+```
+1. Listens on a port
+2. Accepts TCP, parses raw HTTP → WSGI environ dict
+3. Calls application(environ, start_response)
+4. Takes Django's response → converts to raw HTTP bytes
+5. Sends back to client
+6. Manages WORKER PROCESSES for concurrency
+```
+```bash
+gunicorn yourproject.wsgi:application --workers 4 --bind 0.0.0.0:8000
+```
+Why not `runserver`: dev-only, single-threaded by default behavior, not hardened, no worker process management/auto-restart.
+
+### Full Request Flow
+```
+Browser → Nginx (TLS termination, static files, port 443)
+        → Gunicorn (internal port, WSGI server, manages workers)
+        → application(environ, start_response)  [WSGI CONTRACT]
+        → Django (your actual code)
+        → response flows back up
+```
+WSGI/ASGI = the rulebook. Gunicorn/Uvicorn = a program following the rulebook. Django = your app code, also following the rulebook.
+
+### ASGI — The Async Successor
+WSGI is fully synchronous — cannot handle WebSockets, long-lived connections, native async views.
+```python
+async def application(scope, receive, send): ...
+# yourproject/asgi.py
+application = get_asgi_application()
+```
+Servers: Uvicorn (most common), Daphne (built for Django Channels), Hypercorn.
+```bash
+gunicorn yourproject.asgi:application -k uvicorn.workers.UvicornWorker --workers 4
+```
+(Gunicorn's process management + Uvicorn's async handling underneath)
+
+**When you need ASGI:** WebSockets, Django Channels, real-time push, SSE.
+**When WSGI is sufficient:** standard CRUD apps, request-response only (e.g., reading list app).
+
+### One-liner
+> *"WSGI is the synchronous contract between Python web servers and frameworks — Gunicorn implements it as a real server, managing worker processes. ASGI is the async successor for WebSockets/long-lived connections, served by Uvicorn/Daphne. Standard CRUD apps only need WSGI + Gunicorn."*
