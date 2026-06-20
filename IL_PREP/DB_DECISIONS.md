@@ -342,3 +342,80 @@ Rare in practice — only appears with true three-way business constraints.
 | 5NF | Join dependency | Ternary relationships → 3 separate tables |
 
 Production: target 3NF/BCNF. Deliberate denormalization is common for read performance.
+
+---
+
+## Why Redis Is Fast — The 4 Core Secrets
+
+> *"Redis isn't fast despite being single-threaded — it's fast because it's single-threaded."*
+
+### Secret 1 — In-Memory, Zero Disk I/O
+```
+RAM access:  ~100 nanoseconds
+SSD access:  ~100 microseconds  (1,000x slower)
+HDD access:  ~10 milliseconds   (100,000x slower)
+```
+Foundation of the speed advantage — pure physics, before any clever architecture.
+
+### Secret 2 — Single-Threaded Event Loop (No Locks)
+```
+Multi-threaded DB: multiple threads may touch same data → need locks →
+  threads wait for locks → context-switching overhead → "fighting threads"
+
+Redis: ONE thread executes commands, one at a time, always
+  → no locks needed, no race conditions, no deadlocks possible
+  → atomic by design, for free
+```
+Lock contention overhead at high QPS often costs MORE than doing work sequentially on one thread. "One fast thread beats many fighting threads."
+
+### Secret 3 — I/O Multiplexing (epoll/kqueue)
+How ONE thread serves millions of connections:
+```
+Naive: 1 thread per connection → 10,000 connections = 10,000 threads = exhaustion
+
+Redis: epoll (Linux) / kqueue (BSD/Mac)
+  ONE thread monitors ALL sockets simultaneously
+  OS tells Redis: "these 50 sockets have data ready RIGHT NOW"
+  Redis processes just those, asks epoll again
+```
+```
+while true:
+  ready_sockets = epoll_wait()   # OS tells you who's ready
+  for socket in ready_sockets:
+    read command → execute (microseconds) → write response
+```
+**Key insight:** network I/O is the real bottleneck, not command execution. A Redis command takes microseconds; a network round trip takes milliseconds. Redis can execute 100-1000 commands in the time ONE round trip takes. The thread is mostly waiting on network, and epoll lets it wait on thousands of connections at once instead of one at a time. Same underlying pattern as Node.js/FastAPI async event loops.
+
+### Secret 4 — Optimized Data Structures + Selective Modern Threading
+```
+Hand-tuned C data structures:
+  Small integers → integer encoding (compact)
+  Small strings  → embedded directly in object
+  Large strings  → heap allocation only when needed
+```
+**Modern Redis isn't purely single-threaded anymore:**
+```
+Redis 4.0+: Lazy-free — deleting huge keys happens in a BACKGROUND thread
+Redis 6.0+: I/O threads — reading/writing socket bytes can use multiple threads
+            BUT command execution itself stays single-threaded
+```
+```yaml
+# redis.conf
+io-threads 4
+io-threads-do-reads yes
+```
+Precise modern truth: command execution is single-threaded (the core guarantee); I/O and background cleanup got threaded as network bandwidth became the bottleneck at extreme scale.
+
+### The Caveat — Single-Threaded Is Also a Weakness
+```
+KEYS *        → scans ALL keys → blocks the ENTIRE server while running
+Large SORT    → blocks similarly
+Big key DELETE → blocks (unless using UNLINK / lazy-free)
+
+Fix: SCAN instead of KEYS — cursor-based, processes small batches,
+     doesn't block other clients between batches
+```
+One slow command blocks everyone — no second thread to pick up slack. Worth mentioning as the deliberate trade-off, not "Redis is magic."
+
+### One-liner
+> *"Redis is fast because it's single-threaded, not despite it — no locks, atomic by default. Uses epoll for I/O multiplexing — one thread monitors thousands of sockets, only processes ready ones. Network I/O is the real bottleneck since commands take microseconds vs millisecond round trips. Trade-off: one slow command (KEYS *) blocks the entire server."*
