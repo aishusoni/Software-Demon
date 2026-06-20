@@ -328,3 +328,255 @@ Connection pool → manages DB connections shared across threads
 HPA (K8s)      → scales pods (each with their own thread pool) based on load
 Load balancer  → distributes across multiple pods, each with their own pool
 ```
+
+---
+
+## CONN_MAX_AGE — Common Misconception Corrected
+
+```python
+DATABASES = {'default': {'CONN_MAX_AGE': 600}}
+```
+**This is 600 SECONDS (10 minutes) — a unit of TIME, NOT a count of connections or requests.**
+
+```
+Without it: every request opens a NEW DB connection, closes after
+With it:    connection reused for up to 600s before reopening
+Per-process: each Gunicorn worker maintains its own reused connection
+```
+Does NOT mean "max 600 DB interactions." Has nothing to do with concurrent capacity.
+
+**What actually determines concurrent DB capacity:**
+```
+Gunicorn workers × threads per worker ≈ concurrent requests possible
+≈ concurrent DB connections possible (roughly 1 per active request)
+
+Also bounded by Postgres's own max_connections (default ~100)
+```
+
+---
+
+## Threads vs Workers vs CPU Cores (Python-Specific — GIL)
+
+```
+CPU core  = HARDWARE — real physical limit of simultaneous execution
+Worker    = a PROCESS — separate memory, separate GIL, TRUE parallelism
+            across cores (Gunicorn's --workers)
+Thread    = lives INSIDE a process, SHARES its memory, limited by GIL
+```
+
+### The GIL (Global Interpreter Lock)
+```
+Only ONE thread per PROCESS can execute Python bytecode at any instant.
+GIL is RELEASED during I/O waits (DB calls, network, file I/O).
+GIL is NEVER released during CPU computation.
+
+→ Threads help for I/O-bound work (overlapping wait time)
+→ Threads give ZERO benefit for CPU-bound work (GIL blocks parallelism)
+```
+This is WHY Gunicorn's primary scaling lever is `--workers` (processes, bypass GIL), not threads. Threads (`--threads`) are a secondary lever, useful only because most web requests are I/O-bound.
+
+---
+
+## CPU-Bound Work — Threading Doesn't Help, Use This Instead
+
+```python
+# WRONG for CPU-heavy work — GIL blocks parallelism, threads run sequentially
+ThreadPoolExecutor(max_workers=10)
+
+# RIGHT — separate processes, real parallel CPU execution
+from concurrent.futures import ProcessPoolExecutor
+with ProcessPoolExecutor(max_workers=4) as executor:  # cap at core count
+    results = list(executor.map(heavy_computation, items))
+
+# BETTER for web requests — never block a web worker with heavy compute
+@app.task
+def heavy_computation_task(item_id): ...
+
+def my_view(request):
+    task = heavy_computation_task.delay(item.id)
+    return JsonResponse({'task_id': task.id}, status=202)  # async, return immediately
+```
+```
+Rule of thumb:
+  I/O-bound, fast        → ThreadPoolExecutor inline, fine
+  CPU-bound, fast (<1-2s) → ProcessPoolExecutor inline, capped at core count
+  CPU-bound, slow         → Celery, ALWAYS — never block a web worker
+```
+
+---
+
+## ThreadPoolExecutor Inside a View — Sizing It Correctly
+
+**This is a DIFFERENT sizing problem than Gunicorn's `(2×cores)+1`.** That formula is for CPU-bound process scaling. A ThreadPoolExecutor for I/O-bound work (e.g., 10 parallel DB updates) is bound by the DOWNSTREAM RESOURCE, not CPU.
+
+```
+Rule 1: never exceed your actual task count (10 items → max_workers=10, not 50)
+Rule 2: the real ceiling is what you're calling (Postgres connections,
+        or an external API's rate limit) — not your own code
+```
+
+### Multi-Request Worst Case (the hard part)
+```
+Worst case total DB connections = Gunicorn workers × ThreadPoolExecutor max_workers
+  9 workers × 10 threads = 90 possible simultaneous connections
+
+Check against Postgres max_connections (minus reserve for other tools):
+  available ≈ 80 → 90 > 80 → will eventually hit "too many connections"
+
+Safe formula:
+  max_workers_per_pool ≈ (available_db_connections - reserve) / gunicorn_workers
+  (80) / (9) ≈ 8.8 → use max_workers=8, not 10
+```
+
+### This Is the Rate Limiter Problem, Different Costume
+Bounding concurrent usage of a shared resource across multiple independent processes — same pattern as the Rate Limiter case study (see SYSTEM_DESIGN.md), just applied to DB connections instead of API requests per user.
+
+```python
+# Distributed semaphore via Redis — same INCR pattern as the rate limiter
+def acquire_db_slot(max_concurrent=80):
+    current = r.incr("active_db_threads")
+    if current > max_concurrent:
+        r.decr("active_db_threads")
+        raise Exception("DB connection budget exhausted")
+    return True
+```
+Enforces the real ceiling directly, rather than trusting static worst-case math.
+
+**Real fix for the DB connection ceiling itself: PgBouncer.** Multiplexes many app-level connections onto fewer real Postgres connections — raises effective capacity dramatically (e.g., 1000 app connections → 20 real Postgres connections).
+
+**If parallel work calls an external API instead of your DB:** the ceiling is THEIR rate limit (often global, not per-server) — same Redis-centralized-counter solution applies.
+
+---
+
+## Max Threads — Practical vs Theoretical
+
+```
+OS theoretical ceiling (Linux): governed by ulimit -u, often thousands,
+  also bounded by available RAM (each thread ~8MB virtual stack default)
+
+Practical USEFUL ceiling (Python, I/O-bound): tens to low hundreds (50-200)
+  — beyond this, scheduling overhead dominates, diminishing returns
+
+CPU-bound: more than core count = ZERO benefit (GIL) — use
+  ProcessPoolExecutor or Celery instead of pushing thread count higher
+```
+
+### What Happens At the Max
+```
+Bounded pool — ThreadPoolExecutor(max_workers=10):
+  11th task submitted → WAITS in internal queue, no crash, graceful
+
+Unbounded — raw threading.Thread() in a loop, no limit:
+  Eventually: RuntimeError: can't start new thread
+  (OS pthread_create() fails — EAGAIN, hit ulimit or out of memory)
+```
+Lesson: always use a bounded pool (`ThreadPoolExecutor` with explicit `max_workers`), never raw unbounded thread creation.
+
+---
+
+## Max Processes — Real Numbers
+
+```
+Linux pid_max: theoretical ~4,194,304 on modern 64-bit kernels — never the
+  real-world constraint
+
+REAL constraint: MEMORY
+  max_processes ≈ available_RAM / memory_per_process (~150MB typical Django worker)
+
+Example: 32GB machine, ~150MB/worker → ~200 workers theoretically possible
+  from MEMORY perspective — but CPU formula (2×cores)+1 almost always
+  caps you LOWER first (e.g., 17 for 8 cores) — CPU is the binding
+  constraint in typical sizing, not memory
+```
+
+---
+
+## Concrete Worked Example — Typical Corporate Server (8 vCPU, 32GB RAM)
+
+```
+I/O-bound app (typical Django — DB calls, API calls):
+  workers = (2×8)+1 = 17
+  memory check: 17 × 150MB ≈ 2.5GB — fine, not the constraint
+  17 workers × 2 threads = 34 concurrent capacity
+  avg request 80ms → RPS ≈ 34/0.08 ≈ 425 RPS sustainable
+
+CPU-bound app (heavy computation in request path):
+  DON'T use I/O formula — no wait time to hide behind
+  workers ≈ cores (or cores-1) = 7-8, NOT 17
+  avg request 500ms (real computation) → RPS ≈ 8/0.5 = 16 RPS
+
+Same machine, same cores — 25x throughput difference, purely from
+whether work is I/O-bound or CPU-bound.
+```
+
+---
+
+## Request Queueing Chain — What Happens Beyond Capacity
+
+```
+1. Kernel socket backlog (lowest layer)
+   Gunicorn --backlog (default 2048) = max pending TCP connections
+   Backlog full + all workers busy → OS REFUSES new connections outright
+
+2. Nginx in front (if present)
+   worker_connections setting, buffers more gracefully
+   Returns 502/503 instead of raw "connection refused"
+
+3. Gunicorn workers — your configured ceiling (17, or 8 for CPU-bound)
+   All busy → requests wait in backlog queue until one frees up
+
+4. Regular saturation → the fix is NOT infinite vertical tuning
+   → HORIZONTAL SCALING: more servers behind a load balancer
+   → This is what K8s HPA automates — scale pods based on real-time load
+```
+
+---
+
+## How It All Connects — Layered System Throughput
+
+The seeming contradiction: "my server handles 500 RPS" vs "current systems handle 100K RPS" vs "Redis handles 1M ops/sec on one thread" — these are NOT comparable numbers. They describe different LAYERS doing fundamentally different amounts of work per operation.
+
+```
+Throughput is inversely proportional to "real work done per request."
+
+CDN              → near-zero work (cached bytes) → millions of RPS
+Load Balancer    → near-zero work (forward packets) → 100K+ RPS (REAL number, wrong layer)
+App Server       → real business logic, DB calls → hundreds-low-thousands RPS
+Redis            → microsecond in-memory lookup → 100K-1M ops/sec (REAL, different unit of work)
+Database         → heaviest real work (disk I/O, ACID) → 5,000-10,000 QPS
+```
+
+### Layered Request Flow (50,000 RPS total example)
+```
+50,000 RPS incoming
+  ↓
+CDN absorbs ~80% (static/cacheable) → millions of RPS capacity, never reaches infra
+  ↓ ~10,000 RPS reaches infra
+Load Balancer (100K+ RPS capacity — near-zero per-request work)
+  ↓ distributed across fleet
+App Server FLEET: 20 instances × 500 RPS each = 10,000 RPS aggregate
+  (horizontal scaling — NOT one impossibly fast box)
+  ↓ each instance calls
+Redis Cache (100K-1M ops/sec) — absorbs most reads, DB barely touched
+  ↓ cache misses only
+Database (5,000-10,000 QPS) — sees the LEAST traffic, by design
+```
+
+**The "100K RPS per server" claims are real for CDN/LB/Redis (near-zero work per op) — never real for an app server doing actual business logic.** "System handles 100K RPS" usually means the FLEET aggregate, not one instance.
+
+### The Unifying Principle
+```
+High-throughput systems aren't built by making one layer impossibly fast.
+They're built by:
+  1. Minimizing real work per request (caching, CDN)
+  2. Parallelizing whatever real work remains (horizontal scaling)
+
+Every case study so far has been a version of this:
+  URL Shortener  → cache absorbs reads, DB barely touched
+  Rate Limiter   → Redis absorbs the hot-path check, never hits DB
+  Notification   → fan-out across many workers, not one fast worker
+  Pastebin       → CDN/presigned URLs bypass your server entirely
+```
+
+### One-liner
+> *"A single app server doing real business logic handles hundreds to low-thousands RPS — that's the honest cost of real work. 100K+ RPS numbers describe CDN, load balancer, or cache layers doing near-zero computation, or an aggregate across a horizontally-scaled fleet. High system throughput comes from minimizing real work (caching/CDN) and parallelizing what remains (horizontal scaling) — not from making any single layer impossibly fast."*
