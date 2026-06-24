@@ -633,3 +633,215 @@ gunicorn yourproject.asgi:application -k uvicorn.workers.UvicornWorker --workers
 
 ### One-liner
 > *"WSGI is the synchronous contract between Python web servers and frameworks — Gunicorn implements it as a real server, managing worker processes. ASGI is the async successor for WebSockets/long-lived connections, served by Uvicorn/Daphne. Standard CRUD apps only need WSGI + Gunicorn."*
+
+---
+
+## 16. Prometheus + Grafana — Full Explanation
+
+### Core Relationship
+```
+Prometheus  = data collector + time-series DB + alerting engine
+Grafana     = visualization layer that reads from Prometheus (and other sources)
+
+Prometheus: "what is the current value of this metric?"
+Grafana:    "show me how this metric looked over the last 6 hours"
+
+Always used together — Prometheus collects and stores, Grafana displays.
+```
+
+### How Prometheus Works — Pull Model
+```
+Every 15 seconds, Prometheus scrapes each target:
+  GET http://your-pod:8000/metrics
+  ← plain text response:
+
+  http_requests_total{method="GET", endpoint="/api/summary", status="200"} 1847
+  celery_queue_depth{queue="product_mapper"} 342
+  process_memory_bytes 524288000
+
+Stores as time-series:
+  celery_queue_depth → [(t=0, 342), (t=15s, 389), (t=30s, 401)...]
+```
+
+### What Exposes /metrics — Three Sources
+
+**1. Your application (django-prometheus)**
+```python
+from prometheus_client import Counter, Histogram, Gauge
+
+gateway_sync_lag = Gauge('gateway_sync_lag_minutes', 'Minutes since last sync')
+product_mapper_duration = Histogram('product_mapper_duration_seconds', 'Job duration')
+celery_queue_depth = Gauge('celery_queue_depth', 'Tasks in queue', ['queue_name'])
+```
+
+**2. kube-state-metrics (K8s objects)**
+```
+kube_pod_status_ready             → is pod ready?
+kube_deployment_replicas          → how many replicas running?
+kube_pod_container_restarts_total → how many times has this pod restarted?
+```
+
+**3. node_exporter (per AKS node — CPU, memory, disk)**
+```
+node_cpu_seconds_total            → CPU usage per core
+node_memory_MemAvailable_bytes    → available RAM
+node_disk_io_time_seconds         → disk I/O
+```
+
+### PromQL — Key Patterns
+```promql
+# Instant value
+celery_queue_depth{queue="product_mapper"}
+
+# Rate (use with counters — only-goes-up metrics)
+rate(http_requests_total[5m])
+
+# Filter by label
+http_requests_total{endpoint="/api/summary", status="500"}
+
+# Aggregate across all pods
+sum(rate(http_requests_total[5m])) by (endpoint)
+
+# CPU usage percentage
+100 - (avg by (pod) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# p99 latency
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+```
+
+### Four Metric Types
+```
+Counter   → only goes up (total requests, errors, tasks processed)
+            use rate() to get per-second rate
+
+Gauge     → goes up and down (queue depth, memory, active connections)
+            read directly, no rate() needed
+
+Histogram → distributions (request duration, response size)
+            use histogram_quantile() to get p50/p95/p99
+
+Summary   → pre-calculated quantiles (similar to histogram)
+```
+
+### Grafana — What It Actually Does
+```
+Connects to Prometheus as data source
+Runs PromQL queries → visualizes results as graphs, gauges, tables
+Auto-refreshes on configurable interval (30s, 1m, etc.)
+```
+
+**Multiple data sources in one dashboard:**
+```
+Prometheus   → metrics (CPU, memory, request rates, queue depth)
+Postgres     → business data (gateway counts, customer counts)
+Elasticsearch → logs (error patterns, search through log messages)
+```
+
+**Grafana Postgres panel (directly queries your DB):**
+```sql
+SELECT time, count(*) FROM gateways 
+WHERE status='offline' GROUP BY time(5m)
+→ shows gateway offline count over time
+```
+
+**Blackbox Exporter (health checks / API probing):**
+```
+Prometheus scrapes Blackbox Exporter which probes:
+  GET https://foc.honeywell.com/health → records response time + status
+Grafana shows: API health over time
+Alert if: non-200 response OR latency > 2 seconds
+```
+
+### Alertmanager — Alert Routing
+```yaml
+# Prometheus alert rule:
+- alert: CeleryQueueDrift
+  expr: celery_queue_depth{queue="product_mapper"} > 1000
+  for: 5m      # must be true for 5 mins (avoid flapping)
+  labels:
+    severity: critical
+  annotations:
+    summary: "Product mapper queue depth exceeding 1000"
+
+- alert: ProductMapperStuck
+  expr: time() - product_mapper_last_completion_timestamp > 21600
+  for: 10m
+```
+
+Alertmanager routes to: Slack, PagerDuty, Email based on severity labels.
+
+### FOC-Specific Key Metrics
+```
+celery_queue_depth{queue="product_mapper"}  → queue drift detection
+product_mapper_last_completion_unix_timestamp → job stuck detection
+product_mapper_duration_seconds             → progressive slowdown (memory leak)
+celery_worker_count                         → workers crashing detection
+http_request_duration_seconds (p99)         → latency degradation
+cache_hit_ratio                             → Redis effectiveness
+gateway_sync_lag_minutes                    → data staleness
+pod_restarts_total                          → stability
+```
+
+### Prometheus Auto-Discovery in K8s
+```yaml
+# Add annotation to your pod → Prometheus finds it automatically
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8000"
+  prometheus.io/path: "/metrics"
+# No manual config when HPA scales up new pods — auto-discovered
+```
+
+### Full Stack in AKS
+```
+Your FOC pods          → expose /metrics (django-prometheus)
+Celery worker pods     → expose /metrics (celery-exporter)
+Prometheus pod         → scrapes all /metrics every 15s
+Alertmanager pod       → receives alerts, routes to Slack/PagerDuty
+Grafana pod            → reads Prometheus, renders dashboards
+Node Exporter          → DaemonSet (one per node), CPU/memory/disk
+kube-state-metrics pod → K8s object state
+```
+
+### Interview One-liner
+> "Prometheus is pull-based — it scrapes /metrics endpoints from our pods, node exporter, and kube-state-metrics every 15 seconds. PromQL lets us query this data. Alertmanager evaluates alert rules and routes to Slack or PagerDuty. Grafana visualizes everything — Prometheus for infrastructure metrics, and can query Postgres directly for business metrics. Together they give us the metrics pillar of observability, complementing ELK which gives us the logs pillar."
+
+---
+
+## 17. Kong vs Nginx Ingress — Three-Layer Routing
+
+```
+Internet → Kong (outer, before AKS) → AKS → Nginx Ingress (inner) → K8s Service → Pods
+```
+
+### Kong — Outer Layer
+```
+SSL/TLS termination, JWT validation, rate limiting, reverse proxy
+Routes to correct AKS service/cluster based on path or host
+Load balances to K8s service endpoint (upstream round-robin)
+Knows about: services, NOT individual pods
+```
+
+### Nginx Ingress — Inner Layer
+```
+Runs INSIDE AKS as a pod
+Path/host-based routing to correct K8s Service
+Cost: ONE Azure LB → Nginx → infinite routing rules
+      vs one expensive Azure LB per service without it
+Does NOT balance across pods — passes to K8s Service which does that
+```
+
+### K8s Service — Pod-Level Balancer
+```
+Stable DNS endpoint for a group of pods
+kube-proxy (iptables) → round-robin across all healthy pod IPs
+Auto-removes pods failing health checks
+Auto-adds new pods when HPA scales up (after readiness probe passes)
+```
+
+### Different Concerns, Not Redundant
+```
+Kong          → "Which cluster? Is request allowed?" (auth, rate limit, SSL)
+Nginx Ingress → "Which K8s Service inside cluster?" (path routing)
+K8s Service   → "Which specific pod?" (pod-level load balance)
+```
