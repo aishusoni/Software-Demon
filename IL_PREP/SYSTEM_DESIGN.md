@@ -547,3 +547,65 @@ Your AKS → ELK setup is log aggregation — pods write logs, Filebeat ships to
 
 ### One-liner
 > *"CDC reads the database write-ahead log and streams every data change as an event. More reliable than application-level publishing — eliminates the dual write problem. Debezium + Kafka is the standard stack."*
+
+---
+
+## Real-Time Dashboard Patterns
+
+### The Problem
+Polling-based dashboards create constant server load even when nothing changed. Every connected user's browser fires requests on a timer regardless of whether data changed.
+
+### Pattern 1 — Frontend Polling (Simple, Inefficient)
+```javascript
+setInterval(() => fetch('/api/gateways').then(update), 30000)
+// Every user × every 30s → server load scales with user count
+```
+
+### Pattern 2 — SSE (Server-Sent Events, Recommended for Dashboards)
+```
+Server → Client only (one-directional push)
+HTTP-native — works with existing Nginx, LB, no protocol upgrade
+Auto-reconnects on network drop
+Perfect for: read-only dashboards, monitoring screens, live feeds
+
+Client:
+  const events = new EventSource('/api/gateway-stream')
+  events.onmessage = (e) => updateDashboard(JSON.parse(e.data))
+
+Server:
+  def gateway_stream(request):
+      def event_stream():
+          while True:
+              changes = get_recent_gateway_changes()
+              if changes:
+                  yield f"data: {json.dumps(changes)}\n\n"
+              time.sleep(5)
+      return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+```
+
+### Pattern 3 — WebSockets (Bidirectional, Overkill for Read-Only)
+```
+Use when: clients ALSO send data in real-time (chat, collaborative editing)
+SSE is simpler and sufficient for dashboards — no need for WS
+```
+
+### Pattern 4 — Redis Pub/Sub + SSE (Production Pattern)
+```
+Data changes in DB
+      ↓
+CJ1/CJ2 publishes to Redis channel: redis.publish("gateway_updates", data)
+      ↓
+SSE endpoint subscribed to Redis channel
+      ↓
+Moment data changes → SSE pushes to ALL connected browsers simultaneously
+→ ~1-2 second end-to-end latency
+→ Decouples "data changed" from "browser notification"
+→ Scales — Redis pub/sub handles many SSE subscribers
+```
+
+### When to Use Which
+```
+Read-only dashboard, updates ≤ few seconds:  SSE + Redis pub/sub
+Bidirectional (user sends + receives):        WebSockets
+Simple, low frequency (>30s intervals):      Frontend polling is fine
+```
