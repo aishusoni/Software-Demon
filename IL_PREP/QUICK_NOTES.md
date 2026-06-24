@@ -723,3 +723,126 @@ NOT a count of connections, NOT a request limit, NOT thread pool size
 Concurrent DB capacity = workers × threads (roughly), bounded by
 Postgres max_connections (default ~100)
 ```
+
+---
+
+## Prometheus + Grafana — Quick Reference
+
+```
+Prometheus = pull-based metrics collector + time-series DB + alerting
+Grafana    = visualization layer reading from Prometheus (and Postgres, ELK)
+
+Prometheus scrapes GET /metrics every 15s from:
+  - Your Django pods (django-prometheus library)
+  - Celery workers (celery-exporter)
+  - node_exporter (CPU, memory, disk per node)
+  - kube-state-metrics (pod restarts, replica counts)
+```
+
+**Four metric types:**
+```
+Counter   → only goes up → use rate() to get per-second rate
+Gauge     → up and down → read directly (queue depth, memory)
+Histogram → distributions → use histogram_quantile() for p99 latency
+Summary   → pre-calculated quantiles
+```
+
+**Key PromQL patterns:**
+```promql
+rate(http_requests_total[5m])                              # req/sec
+celery_queue_depth{queue="product_mapper"}                 # instant value
+sum(rate(http_requests_total[5m])) by (endpoint)           # aggregate
+histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) # p99
+```
+
+**Alertmanager:** evaluates alert rules → routes to Slack/PagerDuty/Email
+
+**Grafana data sources:** Prometheus (metrics) + Postgres (business data) + ES (logs) — all in one dashboard
+
+**Auto-discovery in K8s:**
+```yaml
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8000"
+```
+Prometheus finds new pods automatically — no manual config when HPA scales.
+
+**FOC key alerts:**
+```
+celery_queue_depth > 1000 for 5m       → queue drift
+product_mapper last completion > 6hrs  → job stuck
+pod_restarts_total > 3 in 10m         → stability issue
+http p99 latency > 2s                  → degradation
+```
+
+---
+
+## Kong vs Nginx Ingress vs K8s Service
+
+```
+Kong (outside AKS):
+  → SSL/TLS termination
+  → JWT validation (rejects before hitting cluster)
+  → Rate limiting
+  → Routes to correct AKS service (upstream round-robin)
+  → Knows about: services, NOT pods
+
+Nginx Ingress (inside AKS, runs as a pod):
+  → Path/host routing to correct K8s Service
+  → ONE Azure LB → Nginx → infinite routing rules (cost efficient)
+  → Does NOT balance across pods
+
+K8s Service (innermost):
+  → Stable DNS endpoint for pod group
+  → kube-proxy round-robin across healthy pods
+  → Auto-adds/removes pods as HPA scales
+
+Kong → "Which cluster? Is it allowed?"
+Nginx → "Which service inside?"
+K8s Service → "Which pod?"
+```
+
+---
+
+## FOC Fault Tolerance — Quick Reference
+
+```
+Idempotency (CJ1): UPSERT not INSERT
+  ON CONFLICT (gateway_id) DO UPDATE SET ...
+  Same message twice = same result
+
+CJ2 partial failure fix:
+  Staging table → process all products → atomic swap to production
+  OR per-product sync timestamp → makes partial failure visible
+
+Service Bus DLQ: failed messages retained → processed on recovery
+Circuit breaker: skip failing product API, continue others, alert
+Redis down: cache-aside falls through to DB (read replica absorbs)
+```
+
+---
+
+## Real-Time Dashboard — Options
+
+```
+Frontend polling:   setInterval → constant load even when nothing changed
+SSE (recommended):  server pushes when data changes, HTTP-native,
+                    auto-reconnects, perfect for read-only dashboards
+WebSockets:         bidirectional — overkill for display-only dashboard
+Redis pub/sub:      CJ updates DB → publishes to Redis → SSE endpoint
+                    pushes to browsers → ~1-2s end-to-end latency
+```
+
+---
+
+## Product Mapper Improvement — Before/After
+
+```
+Before: 5hr data age, full sweep 200K gateways, burst queue
+After:  30min data age, decoupled publisher/consumer, scalable consumers
+Ideal:  5min (differential polling with modified_after filter)
+        OR seconds (webhooks/CDC from product source)
+
+Key question: does product source API support modified_after filter?
+If yes → process only changed gateways → job takes minutes not hours
+```
