@@ -21,6 +21,73 @@
 
 ---
 
+## 📺 Primary Resource — Mike Shah's "The C++ Programming Language" (247 videos)
+> https://www.youtube.com/playlist?list=PLvv0ScY6vfd8j-tlhYVPYgiIyXduu6m-L
+> Recommended by a friend. Confirmed deep, well-regarded, low-level focused —
+> Mike Shah is a systems/graphics engineer who explicitly teaches toward
+> HFT/game-dev/performance-critical C++. Good fit for this goal.
+
+**Confirmed structure (topic blocks, not exact video order):**
+
+```
+Block 1 — Language Basics
+  Setup/compilation, types, operators, control flow, functions, arrays
+
+Block 2 — Memory Fundamentals
+  Stack vs heap vs static memory (confirmed dedicated video on this)
+  Pointers, references, the 'static' keyword
+
+Block 3 — Classes (32 parts — the spine of the course, go slow here)
+  5  Avoiding copies (delete, copy constructor, pass by reference)
+  6  Operator overloading
+  7  Member initializer lists
+  8  Structs in C++
+  9  RAII (Resource Acquisition Is Initialization)
+  10 Rule of Five
+  11 friend functions (and why to avoid them)
+  12 Explicit constructors, list initialization
+  13-15 Inheritance (intro, access levels, constructor chaining)
+  16 Virtual functions (dynamic dispatch)
+  17 Virtual destructors (why base class destructor must be virtual)
+  18 Understanding the vtable (popular interview question)
+  19 Interfaces (pure virtual functions)
+  20 Multiple inheritance (with caution)
+  26 Value/zero initialization
+  27 In-class initializers
+  28 Delegating constructors
+  29 Class data layout (optimizing for size)
+  30 pIMPL (pointer to implementation)
+  31 The 'this' keyword
+  32 static member variables/functions
+
+Block 4 — Generics/Templates
+  1 Templates introduction
+  2 Template functions (abbreviated function templates)
+  3 Multiple template parameters, non-type parameters
+  4 Full/partial specialization
+  5 Variadic templates
+
+Block 5 — STL
+  Containers, iterators, algorithms
+
+Block 6 — Move Semantics & Modern C++
+  rvalue references, move constructors, smart pointers, C++11-23 features
+
+Block 7 — Concurrency
+  threads, atomics, memory ordering
+
+Companion courses by same instructor (separate playlists):
+  GDB debugger course — learn this alongside, debugging C is non-negotiable
+  VIM course — optional, workflow speed
+```
+
+**How to use this alongside the phase plan below:** the phases below are the
+CONCEPTS to master. This playlist is the RESOURCE to learn them from. Watch
+in topic blocks, but always pause and do the "explain it back + write code"
+loop with me — don't just passively watch 247 videos.
+
+---
+
 ## 🗺️ Learning Path (Roughly Sequential)
 
 ### Phase 1 — C Fundamentals (Foundation)
